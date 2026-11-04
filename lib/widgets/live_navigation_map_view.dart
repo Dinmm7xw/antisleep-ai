@@ -98,23 +98,24 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
 
   final MapController _mapController = MapController();
   final TextEditingController _fromController =
-      TextEditingController(text: 'ул. Туркестан (Ботанический сад)');
+      TextEditingController(text: 'Моё местоположение • ул. Туркестан, 16');
   final TextEditingController _toController =
-      TextEditingController(text: 'ул. Акмешит / пр. Улы Дала');
+      TextEditingController(text: 'ул. Акмешит, 9 (Space Office)');
   final Distance _distanceCalc = const Distance();
 
   LatLng _pointA = const LatLng(51.10865, 71.42130);
   LatLng _pointB = const LatLng(51.12040, 71.42900);
   LatLng _currentLocation = const LatLng(51.10865, 71.42130);
 
-  String _pointALabel = 'Туркестан 16';
-  String _pointBLabel = 'Улы Дала';
+  String _pointALabel = 'ул. Туркестан, 16';
+  String _pointBLabel = 'ул. Акмешит, 9';
   String _nextActionText = 'Прямо';
   String _nextStreetInstruction = 'Туркестан';
   IconData _nextManeuverIcon = Icons.arrow_upward_rounded;
   double _nextStepDistanceMeters = 240.0;
 
   String _mapTapTarget = 'B';
+  int _selectedTransportMode = 0; // 0 = Авто, 1 = Автобус, 2 = Такси, 3 = Пешком
 
   final List<LatLng> _traveledTrail = <LatLng>[];
   List<LatLng> _routeWaypoints = <LatLng>[];
@@ -934,20 +935,67 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   }
 
-  void _onMapTapped(LatLng tappedLatLng) {
+  /// Resolves tapped coordinates into a human-readable 2GIS street/building name (never ugly raw numbers).
+  Future<String> _reverseGeocode2Gis(LatLng pt) async {
+    try {
+      final Uri uri = Uri.parse(
+        'https://catalog.api.2gis.com/3.0/items/geocode'
+        '?lat=${pt.latitude}&lon=${pt.longitude}'
+        '&fields=items.name,items.full_name'
+        '&key=$_twoGisApiKey',
+      );
+      final http.Response res =
+          await http.get(uri).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final Map<String, dynamic> data =
+            jsonDecode(res.body) as Map<String, dynamic>;
+        final List<dynamic>? items =
+            (data['result'] as Map<String, dynamic>?)?['items']
+                as List<dynamic>?;
+        if (items != null && items.isNotEmpty) {
+          final Map<String, dynamic> first =
+              items.first as Map<String, dynamic>;
+          final String name =
+              (first['name'] as String? ?? first['full_name'] as String? ?? '')
+                  .trim();
+          if (name.isNotEmpty) return name;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback to nearest preset street name so raw coordinates are never shown
+    _PresetPlace nearest = _presets.first;
+    double bestDist = double.infinity;
+    for (final _PresetPlace p in _presets) {
+      final double d = _distanceCalc.as(LengthUnit.Meter, pt, p.coords);
+      if (d < bestDist) {
+        bestDist = d;
+        nearest = p;
+      }
+    }
+    return nearest.title;
+  }
+
+  Future<void> _onMapTapped(LatLng tappedLatLng) async {
+    // Only pick points on map tap when the 2GIS Route Builder sheet is open
+    // so accidental touches while viewing the map don't overwrite the route.
+    if (!_showRouteBuilderPanel) return;
+
     HapticFeedback.selectionClick();
-    final String coordsLabel =
-        '${tappedLatLng.latitude.toStringAsFixed(4)}, ${tappedLatLng.longitude.toStringAsFixed(4)}';
+    final String target = _mapTapTarget;
+    final String streetLabel = await _reverseGeocode2Gis(tappedLatLng);
+    if (!mounted) return;
+
     setState(() {
-      if (_mapTapTarget == 'A') {
+      if (target == 'A') {
         _pointA = tappedLatLng;
-        _pointALabel = 'Точка А ($coordsLabel)';
-        _fromController.text = _pointALabel;
+        _pointALabel = streetLabel;
+        _fromController.text = streetLabel;
         _mapTapTarget = 'B';
       } else {
         _pointB = tappedLatLng;
-        _pointBLabel = 'Точка Б ($coordsLabel)';
-        _toController.text = _pointBLabel;
+        _pointBLabel = streetLabel;
+        _toController.text = streetLabel;
       }
       _isNavigating = true;
       _isFollowingCar = true;
@@ -1954,22 +2002,22 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
               ),
             ),
 
-            // 8. 2GIS Search & Route Builder Sheet ("Откуда А -> Куда Б")
+            // 8. Authentic 2GIS Route Builder Card (Transport Tabs + Connected Откуда/Куда + Quick Places + Full-Width "В путь")
             if (_showRouteBuilderPanel)
               Positioned(
-                top: 86,
+                top: 76,
                 left: 12,
                 right: 12,
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: const <BoxShadow>[
                       BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 20,
-                        offset: Offset(0, 6),
+                        color: Color(0x3D000000),
+                        blurRadius: 28,
+                        offset: Offset(0, 10),
                       ),
                     ],
                   ),
@@ -1977,186 +2025,298 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
+                      // Top Drag Handle
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDDE1E6),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                      // 2GIS Transport Mode Header Tabs + Close Button
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: <Widget>[
-                          const Text(
-                            'Маршрут 2ГИС (Точка А → Точка Б)',
-                            style: TextStyle(
-                              color: Color(0xFF1C1E21),
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14,
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: <Widget>[
+                                  _build2GisTransportTab(
+                                    index: 0,
+                                    icon: Icons.directions_car_filled_rounded,
+                                    label: '$_routeEtaMinutes мин',
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _build2GisTransportTab(
+                                    index: 1,
+                                    icon: Icons.directions_bus_filled_rounded,
+                                    label: '${_routeEtaMinutes + 12} мин',
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _build2GisTransportTab(
+                                    index: 2,
+                                    icon: Icons.local_taxi_rounded,
+                                    label: 'Такси',
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _build2GisTransportTab(
+                                    index: 3,
+                                    icon: Icons.directions_walk_rounded,
+                                    label: 'Пешком',
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           InkWell(
+                            borderRadius: BorderRadius.circular(16),
                             onTap: () => setState(
                                 () => _showRouteBuilderPanel = false),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              color: Color(0xFF8E9297),
-                              size: 20,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF2F3F5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                color: Color(0xFF5A6066),
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Authentic 2GIS Connected "Откуда -> Куда" Block with Swap Button
+                      Stack(
+                        alignment: Alignment.centerRight,
+                        children: <Widget>[
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFFE5E7EB),
+                                width: 1,
+                              ),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(12, 6, 48, 6),
+                            child: Column(
+                              children: <Widget>[
+                                // Point A ("Откуда")
+                                Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: const Color(0xFF1E5EFF),
+                                          width: 5,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 36,
+                                        child: TextField(
+                                          controller: _fromController,
+                                          style: const TextStyle(
+                                            color: Color(0xFF1C1E21),
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          onTap: () => setState(
+                                              () => _mapTapTarget = 'A'),
+                                          onSubmitted: (_) =>
+                                              _applyCustomRouteFromFields(),
+                                          decoration: InputDecoration(
+                                            hintText: 'Откуда (Моё местоположение)',
+                                            hintStyle: const TextStyle(
+                                              color: Color(0xFF8E9297),
+                                              fontSize: 13,
+                                            ),
+                                            isDense: true,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
+                                            border: InputBorder.none,
+                                            suffixIcon: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                              icon: const Icon(
+                                                Icons.cancel_rounded,
+                                                color: Color(0xFFB0B5BA),
+                                                size: 16,
+                                              ),
+                                              onPressed: () {
+                                                _fromController.clear();
+                                                setState(
+                                                    () => _mapTapTarget = 'A');
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Divider line with left vertical connector dots
+                                Row(
+                                  children: <Widget>[
+                                    SizedBox(
+                                      width: 18,
+                                      child: Column(
+                                        children: <Widget>[
+                                          Container(
+                                            width: 2,
+                                            height: 4,
+                                            color: const Color(0xFFBEC3C9),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Container(
+                                            width: 2,
+                                            height: 4,
+                                            color: const Color(0xFFBEC3C9),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Container(
+                                        height: 1,
+                                        color: const Color(0xFFE2E5E9),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Point B ("Куда")
+                                Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF19AA1E),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Icon(
+                                        Icons.flag_rounded,
+                                        color: Colors.white,
+                                        size: 11,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 36,
+                                        child: TextField(
+                                          controller: _toController,
+                                          style: const TextStyle(
+                                            color: Color(0xFF1C1E21),
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          onTap: () => setState(
+                                              () => _mapTapTarget = 'B'),
+                                          onSubmitted: (_) =>
+                                              _applyCustomRouteFromFields(),
+                                          decoration: InputDecoration(
+                                            hintText: 'Куда едем? (улица, ТРЦ, офис)',
+                                            hintStyle: const TextStyle(
+                                              color: Color(0xFF8E9297),
+                                              fontSize: 13,
+                                            ),
+                                            isDense: true,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
+                                            border: InputBorder.none,
+                                            suffixIcon: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                              icon: const Icon(
+                                                Icons.cancel_rounded,
+                                                color: Color(0xFFB0B5BA),
+                                                size: 16,
+                                              ),
+                                              onPressed: () {
+                                                _toController.clear();
+                                                setState(
+                                                    () => _mapTapTarget = 'B');
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Floating 2GIS Swap Circle Button (⇅)
+                          Positioned(
+                            right: 8,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: _swapPointsAandB,
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: const <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 6,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.swap_vert_rounded,
+                                  color: Color(0xFF1C1E21),
+                                  size: 20,
+                                ),
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      // Point A Field
-                      Row(
-                        children: <Widget>[
-                          Container(
-                            width: 26,
-                            height: 26,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF1E5EFF),
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: const Text(
-                              'А',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 38,
-                              child: TextField(
-                                controller: _fromController,
-                                style: const TextStyle(
-                                  color: Color(0xFF1C1E21),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                onTap: () =>
-                                    setState(() => _mapTapTarget = 'A'),
-                                onSubmitted: (_) =>
-                                    _applyCustomRouteFromFields(),
-                                decoration: InputDecoration(
-                                  hintText: 'Откуда (Точка А)',
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF3F4F6),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            onPressed: _swapPointsAandB,
-                            icon: const Icon(
-                              Icons.swap_vert_rounded,
-                              color: Color(0xFF1E5EFF),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Point B Field
-                      Row(
-                        children: <Widget>[
-                          Container(
-                            width: 26,
-                            height: 26,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF19AA1E),
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: const Text(
-                              'Б',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 38,
-                              child: TextField(
-                                controller: _toController,
-                                style: const TextStyle(
-                                  color: Color(0xFF1C1E21),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                onTap: () =>
-                                    setState(() => _mapTapTarget = 'B'),
-                                onSubmitted: (_) =>
-                                    _applyCustomRouteFromFields(),
-                                decoration: InputDecoration(
-                                  hintText: 'Куда (Точка Б — улица, ТРЦ, дом)',
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF3F4F6),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF19AA1E),
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(64, 38),
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            onPressed: _applyCustomRouteFromFields,
-                            child: const Text(
-                              'В путь',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Quick Preset Chips (Astana & Almaty)
+
+                      // 2GIS Quick Places Carousel (Icons + Full Street Names, never cut off)
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: _presets.map((_PresetPlace place) {
+                            final bool isSelected =
+                                _toController.text.contains(place.title) ||
+                                    _pointBLabel == place.title;
                             return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ActionChip(
-                                visualDensity: VisualDensity.compact,
-                                backgroundColor: const Color(0xFFF3F4F6),
-                                side: BorderSide.none,
-                                label: Text(
-                                  place.title,
-                                  style: const TextStyle(
-                                    color: Color(0xFF1C1E21),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                onPressed: () {
+                              padding: const EdgeInsets.only(right: 8),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
                                   setState(() {
                                     if (_mapTapTarget == 'A') {
                                       _pointA = place.coords;
@@ -2178,9 +2338,87 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                                     announceVoice: true,
                                   );
                                 },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 7,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFFE8F7E9)
+                                        : const Color(0xFFF2F3F5),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF19AA1E)
+                                          : Colors.transparent,
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Icon(
+                                        Icons.place_rounded,
+                                        size: 14,
+                                        color: isSelected
+                                            ? const Color(0xFF19AA1E)
+                                            : const Color(0xFF1E5EFF),
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        place.title,
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? const Color(0xFF0E7A12)
+                                              : const Color(0xFF1C1E21),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             );
                           }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Full-Width Official 2GIS Green "В путь" Action Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 46,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF19AA1E),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: _applyCustomRouteFromFields,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              const Icon(
+                                Icons.navigation_rounded,
+                                size: 20,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'В путь • $_routeEtaMinutes мин ($_formattedDistanceKm км)',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -2292,6 +2530,47 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
           ],
         );
       },
+    );
+  }
+
+  Widget _build2GisTransportTab({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final bool isSelected = _selectedTransportMode == index;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _selectedTransportMode = index);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF19AA1E) : const Color(0xFFF2F3F5),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : const Color(0xFF5A6066),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : const Color(0xFF1C1E21),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
