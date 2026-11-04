@@ -72,6 +72,28 @@ external void _jsStopWebSiren();
 external void _jsSpeakNav(JSString text);
 
 /// Web implementation reading MediaPipe 468-Landmark telemetry, HTML5 GPS, Yandex Maps 2.1 JS API, and Web PiP.
+
+@JS('_antiSleepStartNeuroGammaSiren')
+external void _jsStartNeuroGammaSiren();
+
+@JS('_antiSleepStopNeuroGammaSiren')
+external void _jsStopNeuroGammaSiren();
+
+@JS('_antiSleepSpeakText')
+external void _jsSpeakText(JSString text, JSString lang);
+
+@JS('_antiSleepStopSpeech')
+external void _jsStopSpeech();
+
+@JS('_antiSleepEnsureWebcam')
+external void _jsEnsureWebcam();
+
+@JS('_antiSleepPlayKazakhVoice')
+external void _jsPlayKazakhVoice(JSString key);
+
+@JS('_antiSleepStopKazakhVoice')
+external void _jsStopKazakhVoice();
+
 class WebFaceBridge {
   static final Set<String> _registeredViews = <String>{};
 
@@ -278,6 +300,48 @@ class WebFaceBridge {
   static void speakNavigationInstruction(String text) {
     try {
       _jsSpeakNav(text.toJS);
+    } catch (_) {}
+  }
+
+  static void startNeuroGammaSiren() {
+    try {
+      _jsStartNeuroGammaSiren();
+    } catch (_) {}
+  }
+
+  static void stopNeuroGammaSiren() {
+    try {
+      _jsStopNeuroGammaSiren();
+    } catch (_) {}
+  }
+
+  static void speakText(String text, String lang) {
+    try {
+      _jsSpeakText(text.toJS, lang.toJS);
+    } catch (_) {}
+  }
+
+  static void stopSpeech() {
+    try {
+      _jsStopSpeech();
+    } catch (_) {}
+  }
+
+  static void ensureWebcam() {
+    try {
+      _jsEnsureWebcam();
+    } catch (_) {}
+  }
+
+  static void playKazakhVoice(String key) {
+    try {
+      _jsPlayKazakhVoice(key.toJS);
+    } catch (_) {}
+  }
+
+  static void stopKazakhVoice() {
+    try {
+      _jsStopKazakhVoice();
     } catch (_) {}
   }
 }

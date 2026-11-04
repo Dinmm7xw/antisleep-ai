@@ -19,8 +19,9 @@
   <link rel="manifest" href="manifest.json">
 
   <!-- MediaPipe Face Mesh for Real-Time 468-Landmark Tracking when running on Flutter Web -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
 
+  <script src="kazakh_audio_data.js"></script>
   <!-- Official 2GIS MapGL 3D WebGL API + 2GIS Directions Plugin (API Key: 01a1951a-28ee-4a07-9e99-40ba82333bb0) -->
   <script src="https://mapgl.2gis.com/api/js/v1"></script>
   <script src="https://unpkg.com/@2gis/mapgl-directions@^2/dist/directions.js"></script>
@@ -36,10 +37,16 @@
     window._antiSleepBgEnabled = true;
 
     (function initWebFaceMeshAndBackgroundBridge() {
-      const LEFT_EYE = [33, 160, 158, 133, 153, 144];
-      const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
-      const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
-      const LIPS_CONTOUR = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+      // Capture any video element in the page via prototype hook
+      let capturedVideo = null;
+      try {
+        const _origPlay = HTMLVideoElement.prototype.play;
+        HTMLVideoElement.prototype.play = function() {
+          capturedVideo = this;
+          console.log("[AntiSleep] Hooked playing HTMLVideoElement:", this);
+          return _origPlay.apply(this, arguments);
+        };
+      } catch (e) {}
 
       let faceMesh = null;
       let isBusy = false;
@@ -49,140 +56,209 @@
         return Math.hypot(a.x - b.x, a.y - b.y);
       }
 
-      function computeEyeEAR(landmarks, idx) {
-        const p1 = landmarks[idx[0]], p2 = landmarks[idx[1]], p3 = landmarks[idx[2]];
-        const p4 = landmarks[idx[3]], p5 = landmarks[idx[4]], p6 = landmarks[idx[5]];
-        const h = dist(p1, p4);
-        if (h === 0) return 0.30;
-        return (dist(p2, p6) + dist(p3, p5)) / (2.0 * h);
+      // Weighted 3-pair Eye Aspect Ratio (EAR) formula
+      // Right Eye: corners [33, 133], top [160, 159, 158], bottom [144, 145, 153]
+      // Left Eye:  corners [362, 263], top [385, 386, 387], bottom [380, 374, 373]
+      function computeEyeEAR(lm, isRight) {
+        const c1 = isRight ? lm[33] : lm[362];
+        const c2 = isRight ? lm[133] : lm[263];
+        const h = dist(c1, c2);
+        if (h <= 0.001) return 0.30;
+
+        const t1 = isRight ? lm[160] : lm[385];
+        const b1 = isRight ? lm[144] : lm[380];
+        const t2 = isRight ? lm[159] : lm[386]; // Center aperture
+        const b2 = isRight ? lm[145] : lm[374]; // Center aperture
+        const t3 = isRight ? lm[158] : lm[387];
+        const b3 = isRight ? lm[153] : lm[373];
+
+        const v1 = dist(t1, b1);
+        const v2 = dist(t2, b2);
+        const v3 = dist(t3, b3);
+
+        return (v1 + 2.0 * v2 + v3) / (4.0 * h);
       }
 
-      function computeMAR(landmarks) {
-        const top = landmarks[13], bottom = landmarks[14];
-        const left = landmarks[78], right = landmarks[308];
+      function computeMAR(lm) {
+        const top = lm[13], bottom = lm[14];
+        const left = lm[78], right = lm[308];
         const h = dist(left, right);
-        if (h === 0) return 0.14;
+        if (h <= 0.001) return 0.14;
         return dist(top, bottom) / h;
       }
 
       function findActiveVideoElement() {
-        const directVideos = document.querySelectorAll('video');
-        for (const v of directVideos) {
-          if (v.readyState >= 2 && v.videoWidth > 0) return v;
+        if (capturedVideo && capturedVideo.readyState >= 2 && capturedVideo.videoWidth > 0) {
+          return capturedVideo;
         }
-        const allNodes = document.querySelectorAll('*');
-        for (const node of allNodes) {
-          if (node.shadowRoot) {
-            const shadowVideos = node.shadowRoot.querySelectorAll('video');
-            for (const v of shadowVideos) {
-              if (v.readyState >= 2 && v.videoWidth > 0) return v;
+        function scan(root) {
+          if (!root) return null;
+          const vids = root.querySelectorAll('video');
+          for (const v of vids) {
+            if (v.readyState >= 2 && v.videoWidth > 0) return v;
+          }
+          const all = root.querySelectorAll('*');
+          for (const el of all) {
+            if (el.shadowRoot) {
+              const found = scan(el.shadowRoot);
+              if (found) return found;
             }
           }
+          return null;
+        }
+        const found = scan(document.body || document);
+        if (found) {
+          capturedVideo = found;
+          return found;
         }
         return null;
       }
 
       window._antiSleepFindVideo = findActiveVideoElement;
 
-      function setupFaceMesh() {
+      // Ensure fallback camera stream if camera_web takes time
+      window._antiSleepEnsureWebcam = async function() {
+        const current = findActiveVideoElement();
+        if (current) return;
+        try {
+          console.log("[AntiSleep] Requesting direct getUserMedia fallback...");
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+          });
+          let vid = document.getElementById('_antiSleepFallbackVideo');
+          if (!vid) {
+            vid = document.createElement('video');
+            vid.id = '_antiSleepFallbackVideo';
+            vid.autoplay = true;
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.style.position = 'fixed';
+            vid.style.top = '-9999px';
+            vid.style.left = '-9999px';
+            vid.style.width = '1px';
+            vid.style.height = '1px';
+            vid.style.opacity = '0.001';
+            vid.style.pointerEvents = 'none';
+            document.body.appendChild(vid);
+          }
+          vid.srcObject = stream;
+          await vid.play();
+          capturedVideo = vid;
+          console.log("[AntiSleep] Direct fallback camera successfully active!");
+        } catch (e) {
+          console.warn("[AntiSleep] getUserMedia fallback error:", e);
+        }
+      };
+
+      async function setupFaceMesh() {
         if (typeof FaceMesh === 'undefined') {
-          setTimeout(setupFaceMesh, 500);
+          setTimeout(setupFaceMesh, 350);
           return;
         }
-        faceMesh = new FaceMesh({
-          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-        });
-        faceMesh.setOptions({
-          maxNumFaces: 1,
-          refineLandmarks: true,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        });
-
-        faceMesh.onResults((results) => {
-          if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-            bgClosedSince = null;
-            window._antiSleepLatestFaceJson = JSON.stringify({ faceFound: false, ts: Date.now() });
-            return;
-          }
-
-          const lm = results.multiFaceLandmarks[0];
-          const leftEar = computeEyeEAR(lm, LEFT_EYE);
-          const rightEar = computeEyeEAR(lm, RIGHT_EYE);
-          const ear = (leftEar + rightEar) / 2.0;
-          const mar = computeMAR(lm);
-
-          // Background mode autonomous alarm check when tab is hidden/minimized
-          if (document.hidden && window._antiSleepBgEnabled) {
-            if (ear < 0.22) {
-              if (!bgClosedSince) bgClosedSince = Date.now();
-              if (Date.now() - bgClosedSince >= 1500) {
-                window._antiSleepStartWebSiren();
-                if ("Notification" in window && Notification.permission === "granted") {
-                  try {
-                    new Notification("AntiSleep AI — ОЯНЫҢЫЗ! / ПРОСНИТЕСЬ!", {
-                      body: "Глаза закрыты > 1.5 сек! Немедленно остановитесь!",
-                      requireInteraction: true
-                    });
-                  } catch (e) {}
-                }
-                bgClosedSince = Date.now();
-              }
-            } else {
-              bgClosedSince = null;
-            }
-          }
-
-          const nose = lm[1];
-          const leftEyeOuter = lm[33];
-          const rightEyeOuter = lm[263];
-          const forehead = lm[10];
-          const chin = lm[152];
-
-          const eyeMidX = (leftEyeOuter.x + rightEyeOuter.x) / 2.0;
-          const faceWidth = Math.max(0.05, Math.abs(rightEyeOuter.x - leftEyeOuter.x));
-          const yaw = ((nose.x - eyeMidX) / faceWidth) * 65.0;
-
-          const faceMidY = (forehead.y + chin.y) / 2.0;
-          const faceHeight = Math.max(0.05, Math.abs(chin.y - forehead.y));
-          const pitch = ((faceMidY - nose.y) / faceHeight) * 90.0;
-
-          let minX = 1, minY = 1, maxX = 0, maxY = 0;
-          for (let i = 0; i < lm.length; i += 3) {
-            const p = lm[i];
-            if (p.x < minX) minX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y > maxY) maxY = p.y;
-          }
-
-          const mapPts = (indices) => indices.map(i => [
-            Math.round(lm[i].x * 1000) / 1000,
-            Math.round(lm[i].y * 1000) / 1000
-          ]);
-
-          window._antiSleepLatestFaceJson = JSON.stringify({
-            faceFound: true,
-            ts: Date.now(),
-            ear: Math.round(ear * 1000) / 1000,
-            mar: Math.round(mar * 1000) / 1000,
-            pitch: Math.round(pitch * 10) / 10,
-            yaw: Math.round(yaw * 10) / 10,
-            bbox: [minX, minY, maxX, maxY],
-            leftEye: mapPts(LEFT_EYE),
-            rightEye: mapPts(RIGHT_EYE),
-            lips: mapPts(LIPS_CONTOUR),
-            oval: mapPts(FACE_OVAL)
+        try {
+          faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`
           });
-        });
+          faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: false, // Essential: avoids heavy attention models that stall WASM!
+            minDetectionConfidence: 0.45,
+            minTrackingConfidence: 0.45
+          });
 
-        requestAnimationFrame(tickVideoFrame);
-        // Background timer ensures MediaPipe continues analyzing even when browser tab is minimized/backgrounded
-        setInterval(() => {
-          if (document.hidden && window._antiSleepBgEnabled) {
-            processOneFrame();
+          faceMesh.onResults(onFaceResults);
+
+          console.log("[AntiSleep] Initializing MediaPipe FaceMesh runtime...");
+          await faceMesh.initialize();
+          console.log("[AntiSleep] MediaPipe FaceMesh runtime fully READY!");
+
+          requestAnimationFrame(tickVideoFrame);
+          setInterval(() => {
+            if (document.hidden && window._antiSleepBgEnabled) {
+              processOneFrame();
+            }
+          }, 120);
+        } catch (err) {
+          console.warn("[AntiSleep] FaceMesh setup error:", err);
+          setTimeout(setupFaceMesh, 1000);
+        }
+      }
+
+      function onFaceResults(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+          bgClosedSince = null;
+          window._antiSleepLatestFaceJson = JSON.stringify({ faceFound: false, ts: Date.now() });
+          return;
+        }
+
+        const lm = results.multiFaceLandmarks[0];
+        const rightEar = computeEyeEAR(lm, true);
+        const leftEar = computeEyeEAR(lm, false);
+        const ear = (leftEar + rightEar) / 2.0;
+        const mar = computeMAR(lm);
+
+        // Background autonomous alarm
+        if (document.hidden && window._antiSleepBgEnabled) {
+          if (ear < 0.22) {
+            if (!bgClosedSince) bgClosedSince = Date.now();
+            if (Date.now() - bgClosedSince >= 1500) {
+              window._antiSleepStartWebSiren();
+              if (window._antiSleepPlayKazakhVoice) {
+                window._antiSleepPlayKazakhVoice('drowsiness_alert');
+              }
+              bgClosedSince = Date.now();
+            }
+          } else {
+            bgClosedSince = null;
           }
-        }, 140);
+        }
+
+        const nose = lm[1];
+        const leftEyeOuter = lm[33];
+        const rightEyeOuter = lm[263];
+        const forehead = lm[10];
+        const chin = lm[152];
+
+        const eyeMidX = (leftEyeOuter.x + rightEyeOuter.x) / 2.0;
+        const faceWidth = Math.max(0.05, Math.abs(rightEyeOuter.x - leftEyeOuter.x));
+        const yaw = ((nose.x - eyeMidX) / faceWidth) * 65.0;
+
+        const faceMidY = (forehead.y + chin.y) / 2.0;
+        const faceHeight = Math.max(0.05, Math.abs(chin.y - forehead.y));
+        const pitch = ((faceMidY - nose.y) / faceHeight) * 90.0;
+
+        let minX = 1, minY = 1, maxX = 0, maxY = 0;
+        for (let i = 0; i < lm.length; i += 3) {
+          const p = lm[i];
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+
+        const LEFT_EYE_PTS = [33, 160, 159, 158, 133, 153, 145, 144];
+        const RIGHT_EYE_PTS = [362, 385, 386, 387, 263, 373, 374, 380];
+        const LIPS_PTS = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+        const FACE_OVAL_PTS = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+
+        const mapPts = (indices) => indices.map(i => [
+          Math.round(lm[i].x * 1000) / 1000,
+          Math.round(lm[i].y * 1000) / 1000
+        ]);
+
+        window._antiSleepLatestFaceJson = JSON.stringify({
+          faceFound: true,
+          ts: Date.now(),
+          ear: Math.round(ear * 1000) / 1000,
+          mar: Math.round(mar * 1000) / 1000,
+          pitch: Math.round(pitch * 10) / 10,
+          yaw: Math.round(yaw * 10) / 10,
+          bbox: [minX, minY, maxX, maxY],
+          leftEye: mapPts(LEFT_EYE_PTS),
+          rightEye: mapPts(RIGHT_EYE_PTS),
+          lips: mapPts(LIPS_PTS),
+          oval: mapPts(FACE_OVAL_PTS)
+        });
       }
 
       async function processOneFrame() {
@@ -204,7 +280,6 @@
       setupFaceMesh();
     })();
 
-    // Real HTML5 GPS Geolocation Watcher for Live Map Navigation
     window._antiSleepStartWebGps = function() {
       try {
         if ("Notification" in window && Notification.permission === "default") {
@@ -256,17 +331,34 @@
       } catch (e) {}
     };
 
-    // Built-in Navigator Voice Guidance (Web Speech API TTS)
+    // Built-in Navigator Voice Guidance (100% Native Kazakh Neural Studio Voice)
     window._antiSleepSpeakNav = function(text) {
       try {
-        if (!("speechSynthesis" in window)) return;
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = "ru-RU";
-        utter.rate = 1.05;
-        utter.pitch = 1.0;
-        window.speechSynthesis.speak(utter);
-      } catch (e) {}
+        if (!text || !window._antiSleepPlayKazakhVoice) return;
+        const lower = text.toLowerCase();
+        if (lower.includes('построен') || lower.includes('құрылды') || lower.includes('маршрут') || lower.includes('бағыт')) {
+          window._antiSleepPlayKazakhVoice('nav_route_built');
+          return;
+        }
+        if (lower.includes('прав') || lower.includes('оң') || lower.includes('right')) {
+          window._antiSleepPlayKazakhVoice('nav_turn_right');
+          return;
+        }
+        if (lower.includes('лев') || lower.includes('сол') || lower.includes('left')) {
+          window._antiSleepPlayKazakhVoice('nav_turn_left');
+          return;
+        }
+        if (lower.includes('прибы') || lower.includes('жетт') || lower.includes('arrive')) {
+          window._antiSleepPlayKazakhVoice('nav_arrived');
+          return;
+        }
+        if (lower.includes('прямо') || lower.includes('тіке') || lower.includes('straight') || lower.includes('движен')) {
+          window._antiSleepPlayKazakhVoice('nav_straight');
+          return;
+        }
+      } catch (e) {
+        console.warn("antiSleepSpeakNav error:", e);
+      }
     };
 
     // Official 2GIS MapGL 3D WebGL Interactive Instance + 2GIS Directions API (Key: 01a1951a-28ee-4a07-9e99-40ba82333bb0)
@@ -479,6 +571,42 @@
           window._antiSleepWebSirenOsc.stop();
           window._antiSleepWebSirenOsc.disconnect();
           window._antiSleepWebSirenOsc = null;
+        }
+      } catch (e) {}
+    };
+
+    // Multilingual Studio Neural Voice Player (KK: Daulet, RU: Svetlana, EN: Emma)
+    window._antiSleepCurrentAudio = null;
+    window._antiSleepPlayKazakhVoice = function(key) {
+      try {
+        if (window._antiSleepCurrentAudio) {
+          window._antiSleepCurrentAudio.pause();
+          window._antiSleepCurrentAudio = null;
+        }
+        let src = null;
+        if (window._antiSleepKazakhAudioB64) {
+          src = window._antiSleepKazakhAudioB64[key] ||
+                window._antiSleepKazakhAudioB64['kk_' + key] ||
+                window._antiSleepKazakhAudioB64['ru_' + key] ||
+                window._antiSleepKazakhAudioB64['en_' + key];
+        }
+        if (!src) {
+          src = 'audio/' + key + '.mp3';
+        }
+        const audio = new Audio(src);
+        audio.volume = 1.0;
+        audio.play().catch(e => console.warn('Audio play error:', e));
+        window._antiSleepCurrentAudio = audio;
+      } catch (e) {
+        console.warn('playKazakhVoice error:', e);
+      }
+    };
+
+    window._antiSleepStopKazakhVoice = function() {
+      try {
+        if (window._antiSleepCurrentAudio) {
+          window._antiSleepCurrentAudio.pause();
+          window._antiSleepCurrentAudio = null;
         }
       } catch (e) {}
     };

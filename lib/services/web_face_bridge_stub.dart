@@ -77,4 +77,11 @@ class WebFaceBridge {
   static void startWebSiren() {}
   static void stopWebSiren() {}
   static void speakNavigationInstruction(String text) {}
+  static void startNeuroGammaSiren() {}
+  static void stopNeuroGammaSiren() {}
+  static void speakText(String text, String lang) {}
+  static void stopSpeech() {}
+  static void ensureWebcam() {}
+  static void playKazakhVoice(String key) {}
+  static void stopKazakhVoice() {}
 }

@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/theme/cockpit_colors.dart';
 import '../services/web_face_bridge.dart';
+import '../services/kazakh_voice_audio.dart';
 
 /// Preset location model for 1-tap Point A / Point B selection.
 class _PresetPlace {
@@ -246,12 +247,47 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     }
   }
 
-  void _speak(String text) {
+  void _speakRouteBuilt() {
     if (!_isVoiceEnabled) return;
-    if (kIsWeb) {
-      WebFaceBridge.speakNavigationInstruction(text);
+    KazakhVoiceAudio.playNavRouteBuilt();
+  }
+
+  void _speakManeuver(IconData icon, String actionText) {
+    if (!_isVoiceEnabled) return;
+    // 1. Precise Icon-based turn maneuver detection
+    if (icon == Icons.turn_right_rounded ||
+        icon == Icons.turn_slight_right_rounded) {
+      KazakhVoiceAudio.playNavTurnRight();
+      return;
+    }
+    if (icon == Icons.turn_left_rounded ||
+        icon == Icons.turn_slight_left_rounded) {
+      KazakhVoiceAudio.playNavTurnLeft();
+      return;
+    }
+    if (icon == Icons.flag_rounded) {
+      KazakhVoiceAudio.playNavArrived();
+      return;
+    }
+    if (icon == Icons.arrow_upward_rounded) {
+      KazakhVoiceAudio.playNavStraight();
+      return;
+    }
+
+    // 2. Keyword fallback
+    final String lower = actionText.toLowerCase();
+    if (lower.contains('прав') || lower.contains('оң') || lower.contains('right')) {
+      KazakhVoiceAudio.playNavTurnRight();
+    } else if (lower.contains('лев') || lower.contains('сол') || lower.contains('left')) {
+      KazakhVoiceAudio.playNavTurnLeft();
+    } else if (lower.contains('прибы') || lower.contains('жетт') || lower.contains('arrive')) {
+      KazakhVoiceAudio.playNavArrived();
+    } else if (lower.contains('прямо') || lower.contains('тіке') || lower.contains('straight') || lower.contains('движен')) {
+      KazakhVoiceAudio.playNavStraight();
     }
   }
+
+
 
   void _moveAndRotateCamera(LatLng center, double zoom, double headingDeg) {
     if (kIsWeb) {
@@ -539,9 +575,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
             });
             _syncRouteTo2GisWebGl();
             if (announceVoice) {
-              _speak(
-                'Маршрут 2ГИС построен. ${_formatMeters(totalDist)}, время в пути $_routeEtaMinutes минут.',
-              );
+              _speakRouteBuilt();
             }
             return;
           }
@@ -673,9 +707,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
             _syncRouteTo2GisWebGl();
 
             if (announceVoice) {
-              _speak(
-                'Маршрут построен. ${_formatMeters(distMeters)}, время в пути $_routeEtaMinutes минут. ${firstTurn.actionText} на ${firstTurn.streetName}.',
-              );
+              _speakRouteBuilt();
             }
             return;
           }
@@ -832,7 +864,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         _nextManeuverIcon = nextStep.icon;
         if (_lastSpokenStepIndex != _activeStepIndex) {
           _lastSpokenStepIndex = _activeStepIndex;
-          _speak('${nextStep.actionText} на ${nextStep.streetName}');
+          _speakManeuver(nextStep.icon, nextStep.actionText);
         }
         break;
       } else {

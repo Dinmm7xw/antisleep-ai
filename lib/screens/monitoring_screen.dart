@@ -9,6 +9,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../core/theme/cockpit_colors.dart';
 import '../services/mlkit_image_converter.dart';
 import '../services/web_face_bridge.dart';
+import '../services/kazakh_voice_audio.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
 import '../widgets/cockpit_bottom_nav_bar.dart';
@@ -64,6 +65,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
   DateTime? _eyesClosedSince;
   DateTime? _mouthOpenSince;
   DateTime? _headDroopSince;
+  DateTime? _lastFaceDetectedAt;
   DateTime _yawnCooldownUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _nodCooldownUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -201,6 +203,9 @@ class _MonitoringScreenState extends State<MonitoringScreen>
             );
 
       _cameraController = controller;
+      if (kIsWeb) {
+        WebFaceBridge.ensureWebcam();
+      }
       await controller.initialize();
 
       if (!mounted) return;
@@ -239,6 +244,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         final WebFaceFrameData? data = WebFaceBridge.pollLatestWebFaceFrame();
         _webFaceData = data;
         if (data != null && data.faceFound) {
+          _lastFaceDetectedAt = DateTime.now();
           _evaluateRealBiometrics(
             FaceBiometrics(
               ear: data.ear,
@@ -256,9 +262,13 @@ class _MonitoringScreenState extends State<MonitoringScreen>
           );
           return;
         } else {
-          _eyesClosedSince = null;
-          _mouthOpenSince = null;
-          _headDroopSince = null;
+          final DateTime now = DateTime.now();
+          if (_lastFaceDetectedAt == null ||
+              now.difference(_lastFaceDetectedAt!).inMilliseconds > 1200) {
+            _eyesClosedSince = null;
+            _mouthOpenSince = null;
+            _headDroopSince = null;
+          }
           setState(() {});
           return;
         }
@@ -375,6 +385,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         appState.incrementYawn();
         HapticFeedback.heavyImpact();
         _showTemporaryBanner(appState.t('yawnToast'));
+        KazakhVoiceAudio.playYawnAlert();
       }
     } else {
       _mouthOpenSince = null;
@@ -390,6 +401,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         appState.incrementHeadNod();
         HapticFeedback.heavyImpact();
         _showTemporaryBanner(appState.t('headNodToast'));
+        KazakhVoiceAudio.playHeadDroopAlert();
       }
     } else {
       _headDroopSince = null;

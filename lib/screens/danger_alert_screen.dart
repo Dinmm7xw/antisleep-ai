@@ -9,6 +9,7 @@ import 'package:flutter_vibrate/flutter_vibrate.dart';
 import '../core/theme/cockpit_colors.dart';
 import '../services/siren_wav_generator.dart';
 import '../services/web_face_bridge.dart';
+import '../services/kazakh_voice_audio.dart';
 import '../state/app_session_state.dart';
 import '../widgets/painters/sound_wave_bars_painter.dart';
 
@@ -44,6 +45,7 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
   Future<void> _startEmergencySirenAndVibration() async {
     if (kIsWeb) {
       WebFaceBridge.startWebSiren();
+      KazakhVoiceAudio.playDrowsinessAlert();
     } else {
       try {
         await _audioPlayer.setReleaseMode(ReleaseMode.loop);
@@ -80,6 +82,8 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
     _vibrationTimer?.cancel();
     if (kIsWeb) {
       WebFaceBridge.stopWebSiren();
+      WebFaceBridge.stopKazakhVoice();
+      KazakhVoiceAudio.playAwakeConfirmed();
     } else {
       try {
         await _audioPlayer.stop();
@@ -94,6 +98,7 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
     _vibrationTimer?.cancel();
     if (kIsWeb) {
       WebFaceBridge.stopWebSiren();
+      WebFaceBridge.stopKazakhVoice();
     }
     _pulseController.dispose();
     _audioPlayer.dispose();
