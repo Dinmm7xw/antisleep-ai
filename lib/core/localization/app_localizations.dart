@@ -78,6 +78,7 @@ class AppLocalizations {
       'navMonitor': 'Бақылау',
       'navMap': 'Карта',
       'navSummary': 'Нәтиже',
+      'navSettings': 'Баптау',
       // Enhanced Cockpit Keys
       'sensitivityMode': 'Сезімталдық режимі',
       'modeCity': 'Қала',
@@ -192,6 +193,7 @@ class AppLocalizations {
       'navMonitor': 'Камера ИИ',
       'navMap': 'Карта',
       'navSummary': 'Сводка',
+      'navSettings': 'Настройки',
       // Enhanced Cockpit Keys
       'sensitivityMode': 'Режим чувствительности',
       'modeCity': 'Город',
@@ -305,6 +307,7 @@ class AppLocalizations {
       'navMonitor': 'AI Camera',
       'navMap': 'Map',
       'navSummary': 'Summary',
+      'navSettings': 'Settings',
       // Enhanced Cockpit Keys
       'sensitivityMode': 'Sensitivity Mode',
       'modeCity': 'City',

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../core/theme/cockpit_colors.dart';
 import '../screens/home_screen.dart';
 import '../screens/monitoring_screen.dart';
+import '../screens/settings_screen.dart';
 import '../screens/summary_screen.dart';
 import '../state/app_session_state.dart';
 
@@ -12,6 +13,7 @@ import '../state/app_session_state.dart';
 /// 1: MonitoringScreen (AI Face & Eye Camera HUD)
 /// 2: MonitoringScreen in Live Map & Road Routing Mode (Yandex / OSRM + PiP Camera)
 /// 3: SummaryScreen (Safety Score & Trip Statistics)
+/// 4: SettingsScreen (Sensor Calibration & Fatigue Sensitivity)
 class CockpitBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int>? onTabSelected;
@@ -43,8 +45,11 @@ class CockpitBottomNavBar extends StatelessWidget {
         targetScreen = const MonitoringScreen(initialMapMode: true);
         break;
       case 3:
-      default:
         targetScreen = const SummaryScreen();
+        break;
+      case 4:
+      default:
+        targetScreen = const SettingsScreen();
         break;
     }
 
@@ -98,6 +103,12 @@ class CockpitBottomNavBar extends StatelessWidget {
                 index: 3,
                 icon: Icons.analytics_rounded,
                 label: appState.t('navSummary'),
+              ),
+              _buildNavItem(
+                context: context,
+                index: 4,
+                icon: Icons.settings_rounded,
+                label: appState.t('navSettings'),
               ),
             ],
           ),
