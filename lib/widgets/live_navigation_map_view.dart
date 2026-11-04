@@ -387,14 +387,21 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   }
 
   String get _activeTileUrl {
-    if (_mapStyleIndex == 1) {
-      // Yandex-style bright road scheme with yellow highways
-      return 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-    } else if (_mapStyleIndex == 2) {
-      return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    if (_mapStyleIndex == 0) {
+      // Real Yandex Maps Dark Automotive Theme (lang=ru_RU)
+      return 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=2&lang=ru_RU&theme=dark';
+    } else if (_mapStyleIndex == 1) {
+      // Real Yandex Maps Day Street Scheme (lang=ru_RU)
+      return 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=2&lang=ru_RU';
     }
-    // Default 0: Dark Cockpit Navigation Map
-    return 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+    // Fallback 2: OpenStreetMap Standard
+    return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  }
+
+  String get _activeMapStyleLabel {
+    if (_mapStyleIndex == 0) return 'Яндекс Ночь';
+    if (_mapStyleIndex == 1) return 'Яндекс День';
+    return 'OSM Схема';
   }
 
   @override
@@ -736,11 +743,12 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
               ),
             ),
 
-            // 3. Left Map Controls (Zoom +, Zoom -, Recenter GPS, Map Layer Style Switcher)
+            // 3. Left Map Controls (Zoom +, Zoom -, Recenter GPS, Yandex Map Layer Switcher)
             Positioned(
               left: 12,
               bottom: 66,
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   _buildMapIconButton(
                     icon: Icons.add_rounded,
@@ -766,14 +774,42 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     },
                   ),
                   const SizedBox(height: 6),
-                  _buildMapIconButton(
-                    icon: Icons.layers_rounded,
-                    color: const Color(0xFFFFCC00),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
                     onTap: () {
+                      HapticFeedback.selectionClick();
                       setState(() {
                         _mapStyleIndex = (_mapStyleIndex + 1) % 3;
                       });
                     },
+                    child: Container(
+                      height: 38,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: CockpitColors.card.withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFFCC00)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Icon(
+                            Icons.layers_rounded,
+                            color: Color(0xFFFFCC00),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _activeMapStyleLabel,
+                            style: const TextStyle(
+                              color: Color(0xFFFFCC00),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
