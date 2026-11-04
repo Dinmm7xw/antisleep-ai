@@ -203,9 +203,6 @@ class _MonitoringScreenState extends State<MonitoringScreen>
             );
 
       _cameraController = controller;
-      if (kIsWeb) {
-        WebFaceBridge.ensureWebcam();
-      }
       await controller.initialize();
 
       if (!mounted) return;
@@ -220,15 +217,20 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       }
     } catch (e) {
       debugPrint('Camera initialization error: $e');
+      if (kIsWeb) {
+        try {
+          WebFaceBridge.ensureWebcam();
+        } catch (_) {}
+      }
       if (!isRetry && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 700));
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
         if (mounted) {
           await _initFrontCamera(isRetry: true);
         }
         return;
       }
       if (mounted) {
-        setState(() => _cameraErrorText = 'AI Radar HUD');
+        setState(() => _cameraErrorText = 'Камера занята другим приложением');
       }
     }
   }

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
@@ -49,7 +49,13 @@ class _HomeScreenState extends State<HomeScreen>
     bool hapticsOk = false;
 
     try {
-      globalCameras = await availableCameras();
+      try {
+        globalCameras = await availableCameras();
+      } catch (firstErr) {
+        debugPrint('Camera probe initial attempt: $firstErr');
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
+        globalCameras = await availableCameras();
+      }
       if (globalCameras.isNotEmpty) {
         final CameraDescription front = globalCameras.firstWhere(
           (CameraDescription c) => c.lensDirection == CameraLensDirection.front,
@@ -58,10 +64,12 @@ class _HomeScreenState extends State<HomeScreen>
         camOk = true;
         camLabel = kIsWeb
             ? 'HD WEBCAM'
-            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}В°)';
+            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}°)';
       }
     } catch (e) {
       debugPrint('Camera probe error: $e');
+      camOk = false;
+      camLabel = 'Камера занята (закройте другие вкладки)';
     }
 
     if (!kIsWeb) {
