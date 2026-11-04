@@ -15,6 +15,7 @@ import '../widgets/cockpit_app_bar.dart';
 import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/dashboard_illustration_painter.dart';
 import 'monitoring_screen.dart';
+import '../widgets/ai_copilot_orb_widget.dart';
 
 /// Screen 1: Futuristic Automotive Cockpit HomeScreen
 class HomeScreen extends StatefulWidget {
@@ -461,6 +462,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
       bottomNavigationBar: const CockpitBottomNavBar(currentIndex: 0),
+      floatingActionButton: const AiCopilotOrbWidget(),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),

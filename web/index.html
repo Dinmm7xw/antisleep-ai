@@ -569,6 +569,65 @@
       } catch (e) {}
     };
 
+        // Real-Time Hands-Free Speech Recognition Bridge (Web Speech API)
+    window._antiSleepRecognition = null;
+    window._antiSleepIsListening = false;
+    window._antiSleepLatestSpeechInput = "";
+
+    window._antiSleepStartListening = function(lang) {
+      try {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          console.warn("[AntiSleep Co-Pilot] SpeechRecognition not supported in this browser");
+          return false;
+        }
+        if (window._antiSleepRecognition) {
+          try { window._antiSleepRecognition.abort(); } catch (e) {}
+        }
+        const rec = new SpeechRecognition();
+        rec.continuous = false;
+        rec.interimResults = false;
+        const localeMap = { 'kk': 'kk-KZ', 'ru': 'ru-RU', 'en': 'en-US' };
+        rec.lang = localeMap[lang] || 'kk-KZ';
+
+        rec.onstart = function() {
+          window._antiSleepIsListening = true;
+          console.log("[AntiSleep Co-Pilot] Listening started in", rec.lang);
+        };
+        rec.onresult = function(event) {
+          if (event.results && event.results.length > 0) {
+            const transcript = event.results[0][0].transcript;
+            console.log("[AntiSleep Co-Pilot] User said:", transcript);
+            window._antiSleepLatestSpeechInput = transcript;
+          }
+        };
+        rec.onerror = function(event) {
+          console.warn("[AntiSleep Co-Pilot] Speech recognition error:", event.error);
+          window._antiSleepIsListening = false;
+        };
+        rec.onend = function() {
+          window._antiSleepIsListening = false;
+          console.log("[AntiSleep Co-Pilot] Listening ended");
+        };
+        rec.start();
+        window._antiSleepRecognition = rec;
+        return true;
+      } catch (e) {
+        console.warn("[AntiSleep Co-Pilot] startListening exception:", e);
+        return false;
+      }
+    };
+
+    window._antiSleepStopListening = function() {
+      try {
+        if (window._antiSleepRecognition) {
+          window._antiSleepRecognition.stop();
+          window._antiSleepRecognition = null;
+        }
+        window._antiSleepIsListening = false;
+      } catch (e) {}
+    };
+
     // Multilingual Studio Neural Voice Player (KK: Daulet, RU: Svetlana, EN: Emma)
     window._antiSleepCurrentAudio = null;
     window._antiSleepPlayKazakhVoice = function(key) {

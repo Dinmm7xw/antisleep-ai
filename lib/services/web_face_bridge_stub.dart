@@ -85,4 +85,8 @@ class WebFaceBridge {
   static void ensureWebcam() {}
   static void playKazakhVoice(String key) {}
   static void stopKazakhVoice() {}
+  static void startListening(String lang) {}
+  static void stopListening() {}
+  static bool isListening() => false;
+  static String? pollLatestSpeechInput() => null;
 }

@@ -93,6 +93,21 @@ external void _jsPlayKazakhVoice(JSString key);
 
 @JS('_antiSleepStopKazakhVoice')
 external void _jsStopKazakhVoice();
+@JS('_antiSleepLatestSpeechInput')
+external JSString? get _jsLatestSpeechInput;
+
+@JS('_antiSleepLatestSpeechInput')
+external set _jsLatestSpeechInput(JSString? value);
+
+@JS('_antiSleepIsListening')
+external JSBoolean? get _jsIsListening;
+
+@JS('_antiSleepStartListening')
+external void _jsStartListening(JSString lang);
+
+@JS('_antiSleepStopListening')
+external void _jsStopListening();
+
 
 class WebFaceBridge {
   static final Set<String> _registeredViews = <String>{};
@@ -344,5 +359,38 @@ class WebFaceBridge {
     try {
       _jsStopKazakhVoice();
     } catch (_) {}
+  }
+
+  static void startListening(String lang) {
+    try {
+      _jsStartListening(lang.toJS);
+    } catch (_) {}
+  }
+
+  static void stopListening() {
+    try {
+      _jsStopListening();
+    } catch (_) {}
+  }
+
+  static bool isListening() {
+    try {
+      return _jsIsListening?.toDart ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? pollLatestSpeechInput() {
+    try {
+      final JSString? raw = _jsLatestSpeechInput;
+      if (raw == null) return null;
+      final String text = raw.toDart;
+      if (text.isEmpty) return null;
+      _jsLatestSpeechInput = ''.toJS;
+      return text;
+    } catch (_) {
+      return null;
+    }
   }
 }
