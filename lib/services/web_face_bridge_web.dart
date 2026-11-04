@@ -4,10 +4,19 @@ import 'dart:ui';
 
 import 'web_face_bridge_stub.dart';
 
-export 'web_face_bridge_stub.dart' show WebFaceFrameData;
+export 'web_face_bridge_stub.dart' show WebFaceFrameData, WebGpsData;
 
 @JS('_antiSleepLatestFaceJson')
 external JSString? get _jsLatestFaceJson;
+
+@JS('_antiSleepLatestGpsJson')
+external JSString? get _jsLatestGpsJson;
+
+@JS('_antiSleepStartWebGps')
+external void _jsStartWebGps();
+
+@JS('_antiSleepToggleWebPip')
+external void _jsToggleWebPip();
 
 @JS('_antiSleepStartWebSiren')
 external void _jsStartWebSiren();
@@ -15,7 +24,7 @@ external void _jsStartWebSiren();
 @JS('_antiSleepStopWebSiren')
 external void _jsStopWebSiren();
 
-/// Web implementation reading MediaPipe 468-Landmark telemetry from window in Chrome/Edge.
+/// Web implementation reading MediaPipe 468-Landmark telemetry, HTML5 GPS, and Web PiP in Chrome/Edge.
 class WebFaceBridge {
   static WebFaceFrameData? pollLatestWebFaceFrame() {
     try {
@@ -85,6 +94,39 @@ class WebFaceBridge {
     }
   }
 
+  static WebGpsData? pollLatestWebGps() {
+    try {
+      final JSString? rawJs = _jsLatestGpsJson;
+      if (rawJs == null) return null;
+      final String jsonStr = rawJs.toDart;
+      if (jsonStr.isEmpty) return null;
+
+      final Map<String, dynamic> map =
+          jsonDecode(jsonStr) as Map<String, dynamic>;
+      return WebGpsData(
+        lat: (map['lat'] as num).toDouble(),
+        lng: (map['lng'] as num).toDouble(),
+        speedKmh: (map['speedKmh'] as num?)?.toDouble() ?? 0.0,
+        heading: (map['heading'] as num?)?.toDouble() ?? 0.0,
+        accuracy: (map['accuracy'] as num?)?.toDouble() ?? 10.0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static void startWebGps() {
+    try {
+      _jsStartWebGps();
+    } catch (_) {}
+  }
+
+  static void toggleWebPictureInPicture() {
+    try {
+      _jsToggleWebPip();
+    } catch (_) {}
+  }
+
   static void startWebSiren() {
     try {
       _jsStartWebSiren();
@@ -97,4 +139,3 @@ class WebFaceBridge {
     } catch (_) {}
   }
 }
-

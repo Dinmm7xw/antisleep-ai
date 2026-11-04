@@ -24,11 +24,14 @@
   <script>
     // Global bridge state read by Dart (web_face_bridge_web.dart)
     window._antiSleepLatestFaceJson = "";
+    window._antiSleepLatestGpsJson = "";
     window._antiSleepWebAudioCtx = null;
     window._antiSleepWebSirenOsc = null;
     window._antiSleepWebSirenTimer = null;
+    window._antiSleepWakeLock = null;
+    window._antiSleepBgEnabled = true;
 
-    (function initWebFaceMeshBridge() {
+    (function initWebFaceMeshAndBackgroundBridge() {
       const LEFT_EYE = [33, 160, 158, 133, 153, 144];
       const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
       const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
@@ -36,6 +39,7 @@
 
       let faceMesh = null;
       let isBusy = false;
+      let bgClosedSince = null;
 
       function dist(a, b) {
         return Math.hypot(a.x - b.x, a.y - b.y);
@@ -62,7 +66,6 @@
         for (const v of directVideos) {
           if (v.readyState >= 2 && v.videoWidth > 0) return v;
         }
-        // Check inside shadow roots created by Flutter platform views
         const allNodes = document.querySelectorAll('*');
         for (const node of allNodes) {
           if (node.shadowRoot) {
@@ -74,6 +77,8 @@
         }
         return null;
       }
+
+      window._antiSleepFindVideo = findActiveVideoElement;
 
       function setupFaceMesh() {
         if (typeof FaceMesh === 'undefined') {
@@ -92,6 +97,7 @@
 
         faceMesh.onResults((results) => {
           if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+            bgClosedSince = null;
             window._antiSleepLatestFaceJson = JSON.stringify({ faceFound: false, ts: Date.now() });
             return;
           }
@@ -102,7 +108,27 @@
           const ear = (leftEar + rightEar) / 2.0;
           const mar = computeMAR(lm);
 
-          // Approximate Head Pitch & Yaw in degrees from nose tip (1), eyes mid, chin (152)
+          // Background mode autonomous alarm check when tab is hidden/minimized
+          if (document.hidden && window._antiSleepBgEnabled) {
+            if (ear < 0.22) {
+              if (!bgClosedSince) bgClosedSince = Date.now();
+              if (Date.now() - bgClosedSince >= 1500) {
+                window._antiSleepStartWebSiren();
+                if ("Notification" in window && Notification.permission === "granted") {
+                  try {
+                    new Notification("AntiSleep AI — ОЯНЫҢЫЗ! / ПРОСНИТЕСЬ!", {
+                      body: "Глаза закрыты > 1.5 сек! Немедленно остановитесь!",
+                      requireInteraction: true
+                    });
+                  } catch (e) {}
+                }
+                bgClosedSince = Date.now();
+              }
+            } else {
+              bgClosedSince = null;
+            }
+          }
+
           const nose = lm[1];
           const leftEyeOuter = lm[33];
           const rightEyeOuter = lm[263];
@@ -147,9 +173,15 @@
         });
 
         requestAnimationFrame(tickVideoFrame);
+        // Background timer ensures MediaPipe continues analyzing even when browser tab is minimized/backgrounded
+        setInterval(() => {
+          if (document.hidden && window._antiSleepBgEnabled) {
+            processOneFrame();
+          }
+        }, 140);
       }
 
-      async function tickVideoFrame() {
+      async function processOneFrame() {
         const video = findActiveVideoElement();
         if (video && faceMesh && !isBusy) {
           isBusy = true;
@@ -158,11 +190,61 @@
           } catch (e) {}
           isBusy = false;
         }
+      }
+
+      async function tickVideoFrame() {
+        await processOneFrame();
         requestAnimationFrame(tickVideoFrame);
       }
 
       setupFaceMesh();
     })();
+
+    // Real HTML5 GPS Geolocation Watcher for Live Map Navigation
+    window._antiSleepStartWebGps = function() {
+      try {
+        if ("Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission();
+        }
+        if ("wakeLock" in navigator && !window._antiSleepWakeLock) {
+          navigator.wakeLock.request("screen").then(lock => {
+            window._antiSleepWakeLock = lock;
+          }).catch(() => {});
+        }
+        if (!("geolocation" in navigator)) return;
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            const c = pos.coords;
+            window._antiSleepLatestGpsJson = JSON.stringify({
+              lat: c.latitude,
+              lng: c.longitude,
+              speedKmh: (c.speed && c.speed > 0) ? (c.speed * 3.6) : 0.0,
+              heading: (c.heading && !isNaN(c.heading)) ? c.heading : 0.0,
+              accuracy: c.accuracy || 10.0,
+              ts: Date.now()
+            });
+          },
+          (err) => {},
+          { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+        );
+      } catch (e) {}
+    };
+
+    // Native Browser Picture-in-Picture Floating Window (stays on top of all other apps/tabs)
+    window._antiSleepToggleWebPip = async function() {
+      try {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+          return false;
+        }
+        const video = window._antiSleepFindVideo ? window._antiSleepFindVideo() : null;
+        if (video && video.requestPictureInPicture) {
+          await video.requestPictureInPicture();
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    };
 
     // Web Audio API Dual-Tone 880Hz/440Hz Siren for reliable sound in Chrome/Edge
     window._antiSleepStartWebSiren = function() {

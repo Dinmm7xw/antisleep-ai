@@ -424,6 +424,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         statusColor: CockpitColors.safeGreen,
                       ),
                     ),
+                    const Divider(color: CockpitColors.cardBorder, height: 16),
+                    _buildReadinessRow(
+                      icon: Icons.picture_in_picture_alt_rounded,
+                      label: appState.t('bgModeLabel'),
+                      status: appState.t('statusActive'),
+                      statusColor: CockpitColors.safeGreen,
+                    ),
                   ],
                 ),
               ),

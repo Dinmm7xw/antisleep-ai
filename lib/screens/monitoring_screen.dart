@@ -11,13 +11,14 @@ import '../services/mlkit_image_converter.dart';
 import '../services/web_face_bridge.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
+import '../widgets/live_navigation_map_view.dart';
 import '../widgets/painters/face_mesh_overlay_painter.dart';
 import 'danger_alert_screen.dart';
 import 'summary_screen.dart';
 
-/// Screen 2: Active Monitoring HUD Screen
-/// Works on BOTH Android/iOS (Google ML Kit FaceDetector) AND Flutter Web
-/// Chrome/Edge (MediaPipe 468-Landmark Web Bridge over live CameraPreview).
+/// Screen 2: Active Monitoring HUD + Interactive GPS Map + Background Mode / PiP Support.
+/// Works on BOTH Android/iOS (Google ML Kit FaceDetector + Native PiP) AND Flutter Web
+/// Chrome/Edge (MediaPipe 468-Landmark Web Bridge + Background Timer + Browser PiP).
 class MonitoringScreen extends StatefulWidget {
   const MonitoringScreen({super.key});
 
@@ -27,12 +28,16 @@ class MonitoringScreen extends StatefulWidget {
 
 class _MonitoringScreenState extends State<MonitoringScreen>
     with WidgetsBindingObserver {
+  static const MethodChannel _bgChannel =
+      MethodChannel('antisleep_ai/background');
+
   CameraController? _cameraController;
   FaceDetector? _faceDetector;
   bool _isProcessingFrame = false;
   bool _isCameraInitialized = false;
   bool _isAlarmRouteOpen = false;
   bool _isPipOverlayMode = false;
+  bool _isBackgroundGuardEnabled = true;
   String? _cameraErrorText;
 
   List<Face> _detectedFaces = <Face>[];
@@ -74,6 +79,8 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     WidgetsBinding.instance.addObserver(this);
     if (!kIsWeb) {
       _initFaceDetector();
+    } else {
+      WebFaceBridge.startWebGps();
     }
     _initFrontCamera();
     _startTripClock();
@@ -81,6 +88,17 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When Background Guard is enabled, do NOT dispose the camera when entering PiP
+    // or switching to 2GIS / Yandex Maps so drowsiness monitoring continues uninterrupted.
+    if (_isBackgroundGuardEnabled) {
+      if (state == AppLifecycleState.resumed &&
+          (_cameraController == null ||
+              !_cameraController!.value.isInitialized)) {
+        _initFrontCamera();
+      }
+      return;
+    }
+
     final CameraController? cameraController = _cameraController;
     if (cameraController == null || !cameraController.value.isInitialized) {
       return;
@@ -89,6 +107,38 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       cameraController.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initFrontCamera();
+    }
+  }
+
+  Future<void> _triggerSystemPipWindow() async {
+    HapticFeedback.mediumImpact();
+    if (kIsWeb) {
+      WebFaceBridge.toggleWebPictureInPicture();
+      _showTemporaryBanner(appState.t('bgModeSub'));
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _bgChannel.invokeMethod<bool>('enterPip');
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _toggleBackgroundGuard() async {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _isBackgroundGuardEnabled = !_isBackgroundGuardEnabled;
+    });
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _bgChannel.invokeMethod<bool>(
+          'setAutoPip',
+          <String, dynamic>{'enabled': _isBackgroundGuardEnabled},
+        );
+      } catch (_) {}
+    }
+    if (_isBackgroundGuardEnabled) {
+      _showTemporaryBanner(appState.t('bgModeSub'));
     }
   }
 
@@ -439,34 +489,60 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
     return Scaffold(
       appBar: CockpitAppBar(
-        titleOverride: appState.t('monitoringHeader'),
-        trailingAction: IconButton(
-          tooltip: appState.t('pipNavTitle'),
-          onPressed: () {
-            HapticFeedback.selectionClick();
-            setState(() => _isPipOverlayMode = !_isPipOverlayMode);
-          },
-          icon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: _isPipOverlayMode
-                  ? CockpitColors.safeGreen.withValues(alpha: 0.2)
-                  : CockpitColors.card,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(
-                color: _isPipOverlayMode
-                    ? CockpitColors.safeGreen
-                    : CockpitColors.cardBorder,
+        titleOverride: _isPipOverlayMode
+            ? appState.t('mapTabTitle')
+            : appState.t('monitoringHeader'),
+        trailingAction: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            // 1. Toggle Live GPS Map + Draggable PiP Camera
+            IconButton(
+              tooltip: appState.t('pipNavTitle'),
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                setState(() => _isPipOverlayMode = !_isPipOverlayMode);
+              },
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _isPipOverlayMode
+                      ? CockpitColors.safeGreen.withValues(alpha: 0.2)
+                      : CockpitColors.card,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(
+                    color: _isPipOverlayMode
+                        ? CockpitColors.safeGreen
+                        : CockpitColors.cardBorder,
+                  ),
+                ),
+                child: Icon(
+                  Icons.map_rounded,
+                  size: 18,
+                  color: _isPipOverlayMode
+                      ? CockpitColors.safeGreen
+                      : CockpitColors.textWhite,
+                ),
               ),
             ),
-            child: Icon(
-              Icons.picture_in_picture_alt_rounded,
-              size: 18,
-              color: _isPipOverlayMode
-                  ? CockpitColors.safeGreen
-                  : CockpitColors.textWhite,
+            // 2. Pop-Out Floating PiP Window on top of other apps (2GIS, Yandex, Browser)
+            IconButton(
+              tooltip: appState.t('pipFloatBtn'),
+              onPressed: _triggerSystemPipWindow,
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: CockpitColors.card,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: CockpitColors.cardBorder),
+                ),
+                child: const Icon(
+                  Icons.picture_in_picture_alt_rounded,
+                  size: 18,
+                  color: CockpitColors.safeGreen,
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
       body: SafeArea(
@@ -509,7 +585,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                   ),
                 ),
 
-              // Main Live Camera Viewport + Face Contour Overlay
+              // Main Live Camera Viewport OR Interactive Live GPS Map + PiP Overlay
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(24),
@@ -517,79 +593,108 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                     fit: StackFit.expand,
                     children: <Widget>[
                       if (_isPipOverlayMode)
-                        _buildPipNavigationView(isEyesOpen)
+                        LiveNavigationMapView(
+                          pipCameraPreview: _buildCameraHudView(isEyesOpen),
+                          isEyesOpen: isEyesOpen,
+                          onTriggerSystemPip: _triggerSystemPipWindow,
+                        )
                       else
                         _buildCameraHudView(isEyesOpen),
 
-                      // Top-Left LIVE Badge + Elapsed Drive Duration
+                      // Top-Left LIVE Badge + Elapsed Drive Duration + Background Mode Toggle
                       Positioned(
-                        top: 14,
-                        left: 14,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: CockpitColors.bg.withValues(alpha: 0.84),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: CockpitColors.cardBorder),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Container(
-                                width: 8,
-                                height: 8,
+                        top: 12,
+                        left: 12,
+                        right: 12,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: CockpitColors.bg.withValues(alpha: 0.86),
+                                borderRadius: BorderRadius.circular(20),
+                                border:
+                                    Border.all(color: CockpitColors.cardBorder),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: hasFace
+                                          ? CockpitColors.safeGreen
+                                          : CockpitColors.warningAmber,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'LIVE • ${_formatDuration(appState.driveDuration)}',
+                                    style: const TextStyle(
+                                      color: CockpitColors.textWhite,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Background Guard Active Toggle Pill
+                            GestureDetector(
+                              onTap: _toggleBackgroundGuard,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: hasFace
+                                  color: _isBackgroundGuardEnabled
                                       ? CockpitColors.safeGreen
-                                      : CockpitColors.warningAmber,
-                                  shape: BoxShape.circle,
+                                          .withValues(alpha: 0.18)
+                                      : CockpitColors.bg.withValues(alpha: 0.84),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: _isBackgroundGuardEnabled
+                                        ? CockpitColors.safeGreen
+                                        : CockpitColors.cardBorder,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Icon(
+                                      Icons.shield_rounded,
+                                      size: 12,
+                                      color: _isBackgroundGuardEnabled
+                                          ? CockpitColors.safeGreen
+                                          : CockpitColors.textMuted,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      appState.t('bgModeLabel'),
+                                      style: TextStyle(
+                                        color: _isBackgroundGuardEnabled
+                                            ? CockpitColors.safeGreen
+                                            : CockpitColors.textMuted,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'LIVE • ${_formatDuration(appState.driveDuration)}',
-                                style: const TextStyle(
-                                  color: CockpitColors.textWhite,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
 
-                      // Top-Right Head Pose Euler Angle Pill
-                      if (hasFace && !_isPipOverlayMode)
-                        Positioned(
-                          top: 14,
-                          right: 14,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: CockpitColors.bg.withValues(alpha: 0.84),
-                              borderRadius: BorderRadius.circular(12),
-                              border:
-                                  Border.all(color: CockpitColors.cardBorder),
-                            ),
-                            child: Text(
-                              'Pitch: ${_headPitch.toStringAsFixed(0)}° • Yaw: ${_headYaw.toStringAsFixed(0)}°',
-                              style: const TextStyle(
-                                color: CockpitColors.textMuted,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      // Bottom Floating EAR Pill + Yawns & Blinks Counter
+                      // Bottom Floating EAR Pill + Yawns & Blinks Counter (when in full Camera HUD view)
                       if (!_isPipOverlayMode)
                         Positioned(
                           bottom: 14,
@@ -719,7 +824,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                           ),
                         ),
                         Text(
-                          'MAR: ${_liveMar.toStringAsFixed(2)} • ${fatiguePct > 50 ? appState.t('warningStatus') : appState.t('optimalStatus')}',
+                          'MAR: ${_liveMar.toStringAsFixed(2)} • Pitch: ${_headPitch.toStringAsFixed(0)}° • Yaw: ${_headYaw.toStringAsFixed(0)}°',
                           style: TextStyle(
                             color: fatiguePct > 50
                                 ? CockpitColors.warningAmber
@@ -831,83 +936,6 @@ class _MonitoringScreenState extends State<MonitoringScreen>
             isEyesOpen: isEyesOpen,
             isYawning: _liveMar > 0.48,
             liveEar: _liveEar,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPipNavigationView(bool isEyesOpen) {
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        CustomPaint(painter: MapNavigationBackgroundPainter()),
-        Positioned(
-          top: 52,
-          left: 14,
-          right: 14,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: CockpitColors.card.withValues(alpha: 0.94),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: CockpitColors.cardBorder),
-            ),
-            child: const Row(
-              children: <Widget>[
-                Icon(
-                  Icons.turn_right_rounded,
-                  color: CockpitColors.safeGreen,
-                  size: 28,
-                ),
-                SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      '250 m',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      'Dostyk Ave • 2GIS Navigation',
-                      style: TextStyle(
-                        color: CockpitColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          top: 125,
-          right: 14,
-          width: 118,
-          height: 152,
-          child: Container(
-            decoration: BoxDecoration(
-              color: CockpitColors.bg,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isEyesOpen
-                    ? CockpitColors.safeGreen
-                    : CockpitColors.dangerRed,
-                width: 2,
-              ),
-              boxShadow: const <BoxShadow>[
-                BoxShadow(color: Colors.black54, blurRadius: 16),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: _buildCameraHudView(isEyesOpen),
-            ),
           ),
         ),
       ],

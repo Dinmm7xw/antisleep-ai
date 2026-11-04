@@ -27,10 +27,29 @@ class WebFaceFrameData {
   });
 }
 
+/// Real GPS location fix returned by browser / device geolocation watcher.
+class WebGpsData {
+  final double lat;
+  final double lng;
+  final double speedKmh;
+  final double heading;
+  final double accuracy;
+
+  const WebGpsData({
+    required this.lat,
+    required this.lng,
+    required this.speedKmh,
+    required this.heading,
+    required this.accuracy,
+  });
+}
+
 /// Native stub implementation (Android / iOS / Desktop).
 class WebFaceBridge {
   static WebFaceFrameData? pollLatestWebFaceFrame() => null;
+  static WebGpsData? pollLatestWebGps() => null;
+  static void startWebGps() {}
+  static void toggleWebPictureInPicture() {}
   static void startWebSiren() {}
   static void stopWebSiren() {}
 }
-
