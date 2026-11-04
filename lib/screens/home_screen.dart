@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
@@ -15,7 +15,6 @@ import '../widgets/cockpit_app_bar.dart';
 import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/dashboard_illustration_painter.dart';
 import 'monitoring_screen.dart';
-import 'navigation_screen.dart';
 
 /// Screen 1: Futuristic Automotive Cockpit HomeScreen
 class HomeScreen extends StatefulWidget {
@@ -59,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen>
         camOk = true;
         camLabel = kIsWeb
             ? 'HD WEBCAM'
-            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}°)';
+            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}В°)';
       }
     } catch (e) {
       debugPrint('Camera probe error: $e');
@@ -387,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
                                 Text(
-                                  '${trip.timestamp.day.toString().padLeft(2, '0')}.${trip.timestamp.month.toString().padLeft(2, '0')}.${trip.timestamp.year} • ${mins}m ${secs}s',
+                                  '${trip.timestamp.day.toString().padLeft(2, '0')}.${trip.timestamp.month.toString().padLeft(2, '0')}.${trip.timestamp.year} вЂў ${mins}m ${secs}s',
                                   style: const TextStyle(
                                     color: CockpitColors.textWhite,
                                     fontWeight: FontWeight.w700,
@@ -396,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'EAR: ${trip.averageEar.toStringAsFixed(2)} • ${appState.t('yawns')}: ${trip.yawnsDetected} • PERCLOS: ${trip.perclosPercent.toStringAsFixed(1)}%',
+                                  'EAR: ${trip.averageEar.toStringAsFixed(2)} вЂў ${appState.t('yawns')}: ${trip.yawnsDetected} вЂў PERCLOS: ${trip.perclosPercent.toStringAsFixed(1)}%',
                                   style: const TextStyle(
                                     color: CockpitColors.textMuted,
                                     fontSize: 11,
@@ -702,7 +701,7 @@ class _HomeScreenState extends State<HomeScreen>
                   HapticFeedback.selectionClick();
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const NavigationScreen(),
+                      builder: (_) => const MonitoringScreen(initialMapMode: true),
                     ),
                   );
                 },
@@ -1021,3 +1020,4 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 }
+
