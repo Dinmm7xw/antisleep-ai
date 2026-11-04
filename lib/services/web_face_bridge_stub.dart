@@ -27,10 +27,61 @@ class WebFaceFrameData {
   });
 }
 
+/// Real GPS location fix returned by browser / device geolocation watcher.
+class WebGpsData {
+  final double lat;
+  final double lng;
+  final double speedKmh;
+  final double heading;
+  final double accuracy;
+
+  const WebGpsData({
+    required this.lat,
+    required this.lng,
+    required this.speedKmh,
+    required this.heading,
+    required this.accuracy,
+  });
+}
+
 /// Native stub implementation (Android / iOS / Desktop).
 class WebFaceBridge {
   static WebFaceFrameData? pollLatestWebFaceFrame() => null;
+  static WebGpsData? pollLatestWebGps() => null;
+  static void startWebGps() {}
+  static void toggleWebPictureInPicture() {}
+  static void openExternalUrl(String url) {}
+  static void registerYandexMapView(
+    String viewType,
+    double startLat,
+    double startLng,
+    double endLat,
+    double endLng,
+  ) {}
+  static void updateYandexRoute(
+    List<List<double>> points,
+    double startLat,
+    double startLng,
+    double endLat,
+    double endLng,
+  ) {}
+  static void moveYandexCenter(double lat, double lng, double zoom) {}
+  static void update2GisCamera3D(
+    double lat,
+    double lng,
+    double zoom,
+    double headingDeg,
+    double pitchDeg,
+  ) {}
+  static Offset? pollClickedYandexCoords() => null;
   static void startWebSiren() {}
   static void stopWebSiren() {}
+  static void speakNavigationInstruction(String text) {}
+  static void startNeuroGammaSiren() {}
+  static void stopNeuroGammaSiren() {}
+  static void speakText(String text, String lang) {}
+  static void stopSpeech() {}
+  static void ensureWebcam() {}
+  static void playKazakhVoice(String key) {}
+  static void stopKazakhVoice() {}
 }
-

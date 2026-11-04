@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
@@ -12,6 +12,7 @@ import '../services/siren_wav_generator.dart';
 import '../services/web_face_bridge.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
+import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/dashboard_illustration_painter.dart';
 import 'monitoring_screen.dart';
 
@@ -57,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen>
         camOk = true;
         camLabel = kIsWeb
             ? 'HD WEBCAM'
-            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}°)';
+            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}В°)';
       }
     } catch (e) {
       debugPrint('Camera probe error: $e');
@@ -385,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
                                 Text(
-                                  '${trip.timestamp.day.toString().padLeft(2, '0')}.${trip.timestamp.month.toString().padLeft(2, '0')}.${trip.timestamp.year} • ${mins}m ${secs}s',
+                                  '${trip.timestamp.day.toString().padLeft(2, '0')}.${trip.timestamp.month.toString().padLeft(2, '0')}.${trip.timestamp.year} вЂў ${mins}m ${secs}s',
                                   style: const TextStyle(
                                     color: CockpitColors.textWhite,
                                     fontWeight: FontWeight.w700,
@@ -394,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'EAR: ${trip.averageEar.toStringAsFixed(2)} • ${appState.t('yawns')}: ${trip.yawnsDetected} • PERCLOS: ${trip.perclosPercent.toStringAsFixed(1)}%',
+                                  'EAR: ${trip.averageEar.toStringAsFixed(2)} вЂў ${appState.t('yawns')}: ${trip.yawnsDetected} вЂў PERCLOS: ${trip.perclosPercent.toStringAsFixed(1)}%',
                                   style: const TextStyle(
                                     color: CockpitColors.textMuted,
                                     fontSize: 11,
@@ -459,6 +460,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
       ),
+      bottomNavigationBar: const CockpitBottomNavBar(currentIndex: 0),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -693,6 +695,107 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               const SizedBox(height: 14),
 
+              // Interactive Route & Navigation Card
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MonitoringScreen(initialMapMode: true),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: <Color>[
+                        Color(0xFF131B26),
+                        Color(0xFF182332),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: CockpitColors.safeGreen.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: CockpitColors.safeGreen.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.map_rounded,
+                          color: CockpitColors.safeGreen,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Text(
+                                  appState.t('navRouteTitle'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: CockpitColors.safeGreen
+                                        .withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'GPS',
+                                    style: TextStyle(
+                                      color: CockpitColors.safeGreen,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              appState.t('whereToPrompt'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: CockpitColors.textMuted,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: CockpitColors.safeGreen,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+
               // Hardware Readiness and Diagnostic Row
               Container(
                 padding:
@@ -738,6 +841,13 @@ class _HomeScreenState extends State<HomeScreen>
                           size: 18,
                         ),
                       ),
+                    ),
+                    const Divider(color: CockpitColors.cardBorder, height: 16),
+                    _buildReadinessRow(
+                      icon: Icons.picture_in_picture_alt_rounded,
+                      label: appState.t('bgModeLabel'),
+                      status: appState.t('statusActive'),
+                      statusColor: CockpitColors.safeGreen,
                     ),
                   ],
                 ),
@@ -910,3 +1020,4 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 }
+

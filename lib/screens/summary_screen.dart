@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../core/theme/cockpit_colors.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
+import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/radial_safety_score_painter.dart';
 import 'home_screen.dart';
 
@@ -21,7 +22,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
   @override
   void initState() {
     super.initState();
-    _autoSaveTrip();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _autoSaveTrip();
+      }
+    });
   }
 
   Future<void> _autoSaveTrip() async {
@@ -137,6 +142,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
     return Scaffold(
       appBar: const CockpitAppBar(),
+      bottomNavigationBar: const CockpitBottomNavBar(currentIndex: 3),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),

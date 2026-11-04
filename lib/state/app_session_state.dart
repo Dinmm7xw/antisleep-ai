@@ -89,6 +89,15 @@ class AppSessionState extends ChangeNotifier {
   bool isNightLightEnabled = false;
   double personalEarOffset = 0.0;
 
+  // Idea #1: AI Voice Co-Pilot & Interactive Cognitive Dialog
+  bool isVoiceCopilotEnabled = true;
+
+  // Idea #2: 40Hz Gamma Neuro-Acoustic Binaural Stimulation
+  bool isNeuroAcousticEnabled = true;
+
+  // Cognitive Awakening Challenge in Danger Alert Screen
+  bool isCognitiveChallengeEnabled = true;
+
   // Saved trip history loaded/persisted on device
   final List<TripRecord> savedTrips = <TripRecord>[];
 
@@ -134,6 +143,21 @@ class AppSessionState extends ChangeNotifier {
 
   void toggleNightLight() {
     isNightLightEnabled = !isNightLightEnabled;
+    notifyListeners();
+  }
+
+  void toggleVoiceCopilot() {
+    isVoiceCopilotEnabled = !isVoiceCopilotEnabled;
+    notifyListeners();
+  }
+
+  void toggleNeuroAcoustic() {
+    isNeuroAcousticEnabled = !isNeuroAcousticEnabled;
+    notifyListeners();
+  }
+
+  void toggleCognitiveChallenge() {
+    isCognitiveChallengeEnabled = !isCognitiveChallengeEnabled;
     notifyListeners();
   }
 

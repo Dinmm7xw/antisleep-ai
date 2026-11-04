@@ -9,15 +9,24 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../core/theme/cockpit_colors.dart';
 import '../services/mlkit_image_converter.dart';
 import '../services/web_face_bridge.dart';
+import '../services/kazakh_voice_audio.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
+import '../widgets/cockpit_bottom_nav_bar.dart';
+import '../widgets/live_navigation_map_view.dart';
 import '../widgets/painters/face_mesh_overlay_painter.dart';
 import 'danger_alert_screen.dart';
+import 'home_screen.dart';
 import 'summary_screen.dart';
 
-/// Screen 2: Active Monitoring HUD Screen with Live Telemetry & Night Illumination
+/// Screen 2: Active Monitoring HUD + Interactive Yandex GPS Map + Night Illumination + Background PiP Support.
 class MonitoringScreen extends StatefulWidget {
-  const MonitoringScreen({super.key});
+  final bool initialMapMode;
+
+  const MonitoringScreen({
+    super.key,
+    this.initialMapMode = false,
+  });
 
   @override
   State<MonitoringScreen> createState() => _MonitoringScreenState();
@@ -25,12 +34,16 @@ class MonitoringScreen extends StatefulWidget {
 
 class _MonitoringScreenState extends State<MonitoringScreen>
     with WidgetsBindingObserver {
+  static const MethodChannel _bgChannel =
+      MethodChannel('antisleep_ai/background');
+
   CameraController? _cameraController;
   FaceDetector? _faceDetector;
   bool _isProcessingFrame = false;
   bool _isCameraInitialized = false;
   bool _isAlarmRouteOpen = false;
   bool _isPipOverlayMode = false;
+  bool _isBackgroundGuardEnabled = true;
   bool _isNightScreenGlowActive = false;
   String? _cameraErrorText;
 
@@ -52,6 +65,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
   DateTime? _eyesClosedSince;
   DateTime? _mouthOpenSince;
   DateTime? _headDroopSince;
+  DateTime? _lastFaceDetectedAt;
   DateTime _yawnCooldownUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _nodCooldownUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -70,9 +84,13 @@ class _MonitoringScreenState extends State<MonitoringScreen>
   @override
   void initState() {
     super.initState();
+    _isPipOverlayMode = widget.initialMapMode;
+    _isNightScreenGlowActive = appState.isNightLightEnabled;
     WidgetsBinding.instance.addObserver(this);
     if (!kIsWeb) {
       _initFaceDetector();
+    } else {
+      WebFaceBridge.startWebGps();
     }
     _initFrontCamera();
     _startTripClock();
@@ -80,6 +98,15 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isBackgroundGuardEnabled) {
+      if (state == AppLifecycleState.resumed &&
+          (_cameraController == null ||
+              !_cameraController!.value.isInitialized)) {
+        _initFrontCamera();
+      }
+      return;
+    }
+
     final CameraController? cameraController = _cameraController;
     if (cameraController == null || !cameraController.value.isInitialized) {
       return;
@@ -88,6 +115,38 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       cameraController.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initFrontCamera();
+    }
+  }
+
+  Future<void> _triggerSystemPipWindow() async {
+    HapticFeedback.mediumImpact();
+    if (kIsWeb) {
+      WebFaceBridge.toggleWebPictureInPicture();
+      _showTemporaryBanner(appState.t('bgModeSub'));
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _bgChannel.invokeMethod<bool>('enterPip');
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _toggleBackgroundGuard() async {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _isBackgroundGuardEnabled = !_isBackgroundGuardEnabled;
+    });
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _bgChannel.invokeMethod<bool>(
+          'setAutoPip',
+          <String, dynamic>{'enabled': _isBackgroundGuardEnabled},
+        );
+      } catch (_) {}
+    }
+    if (_isBackgroundGuardEnabled) {
+      _showTemporaryBanner(appState.t('bgModeSub'));
     }
   }
 
@@ -107,7 +166,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     }
   }
 
-  Future<void> _initFrontCamera() async {
+  Future<void> _initFrontCamera({bool isRetry = false}) async {
     try {
       if (globalCameras.isEmpty) {
         globalCameras = await availableCameras();
@@ -115,7 +174,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
       if (globalCameras.isEmpty) {
         if (mounted) {
-          setState(() => _cameraErrorText = 'No front cameras detected.');
+          setState(() => _cameraErrorText = 'AI FaceMesh Active');
         }
         return;
       }
@@ -126,14 +185,27 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       );
       _lensDirection = frontCamera.lensDirection;
 
-      final CameraController controller = CameraController(
-        frontCamera,
-        kIsWeb ? ResolutionPreset.medium : ResolutionPreset.low,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
+      await _cameraController?.dispose();
+
+      final CameraController controller = kIsWeb
+          ? CameraController(
+              frontCamera,
+              ResolutionPreset.medium,
+              enableAudio: false,
+            )
+          : CameraController(
+              frontCamera,
+              ResolutionPreset.medium,
+              enableAudio: false,
+              imageFormatGroup: defaultTargetPlatform == TargetPlatform.android
+                  ? ImageFormatGroup.yuv420
+                  : ImageFormatGroup.bgra8888,
+            );
 
       _cameraController = controller;
+      if (kIsWeb) {
+        WebFaceBridge.ensureWebcam();
+      }
       await controller.initialize();
 
       if (!mounted) return;
@@ -148,8 +220,15 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       }
     } catch (e) {
       debugPrint('Camera initialization error: $e');
+      if (!isRetry && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        if (mounted) {
+          await _initFrontCamera(isRetry: true);
+        }
+        return;
+      }
       if (mounted) {
-        setState(() => _cameraErrorText = 'Camera error: $e');
+        setState(() => _cameraErrorText = 'AI Radar HUD');
       }
     }
   }
@@ -161,11 +240,11 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       if (!mounted) return;
       appState.updateDuration(_stopwatch.elapsed);
 
-      // Web: Read live biometric data directly from Web Face Bridge
-      if (kIsWeb) {
+      if (kIsWeb && !_isAlarmRouteOpen) {
         final WebFaceFrameData? data = WebFaceBridge.pollLatestWebFaceFrame();
         _webFaceData = data;
         if (data != null && data.faceFound) {
+          _lastFaceDetectedAt = DateTime.now();
           _evaluateRealBiometrics(
             FaceBiometrics(
               ear: data.ear,
@@ -183,15 +262,18 @@ class _MonitoringScreenState extends State<MonitoringScreen>
           );
           return;
         } else {
-          _eyesClosedSince = null;
-          _mouthOpenSince = null;
-          _headDroopSince = null;
+          final DateTime now = DateTime.now();
+          if (_lastFaceDetectedAt == null ||
+              now.difference(_lastFaceDetectedAt!).inMilliseconds > 1200) {
+            _eyesClosedSince = null;
+            _mouthOpenSince = null;
+            _headDroopSince = null;
+          }
           setState(() {});
           return;
         }
       }
 
-      // Check continuous eye closure threshold in real time
       if (_eyesClosedSince != null && !_isAlarmRouteOpen) {
         final int closedMs =
             DateTime.now().difference(_eyesClosedSince!).inMilliseconds;
@@ -303,6 +385,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         appState.incrementYawn();
         HapticFeedback.heavyImpact();
         _showTemporaryBanner(appState.t('yawnToast'));
+        KazakhVoiceAudio.playYawnAlert();
       }
     } else {
       _mouthOpenSince = null;
@@ -318,6 +401,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         appState.incrementHeadNod();
         HapticFeedback.heavyImpact();
         _showTemporaryBanner(appState.t('headNodToast'));
+        KazakhVoiceAudio.playHeadDroopAlert();
       }
     } else {
       _headDroopSince = null;
@@ -424,16 +508,23 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
     return Scaffold(
       appBar: CockpitAppBar(
-        titleOverride: appState.t('monitoringHeader'),
+        titleOverride: _isPipOverlayMode
+            ? appState.t('mapTabTitle')
+            : appState.t('monitoringHeader'),
         trailingAction: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            // Night Illumination toggle button
+            // 1. Night Illumination toggle button
             IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
               tooltip: appState.t('nightLightBoost'),
               onPressed: () {
                 HapticFeedback.selectionClick();
-                setState(() => _isNightScreenGlowActive = !_isNightScreenGlowActive);
+                setState(() {
+                  _isNightScreenGlowActive = !_isNightScreenGlowActive;
+                });
               },
               icon: Container(
                 padding: const EdgeInsets.all(6),
@@ -450,55 +541,65 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                 ),
                 child: Icon(
                   Icons.wb_sunny_rounded,
-                  size: 18,
+                  size: 17,
                   color: _isNightScreenGlowActive
                       ? Colors.amber
                       : CockpitColors.textWhite,
                 ),
               ),
             ),
-            // PiP Navigation toggle
+            // 2. Pop-Out Floating PiP Window on top of other apps (2GIS, Yandex, Browser)
             IconButton(
-              tooltip: appState.t('pipNavTitle'),
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                setState(() => _isPipOverlayMode = !_isPipOverlayMode);
-              },
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+              tooltip: appState.t('pipFloatBtn'),
+              onPressed: _triggerSystemPipWindow,
               icon: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: _isPipOverlayMode
-                      ? CockpitColors.safeGreen.withValues(alpha: 0.2)
-                      : CockpitColors.card,
+                  color: CockpitColors.card,
                   borderRadius: BorderRadius.circular(9),
-                  border: Border.all(
-                    color: _isPipOverlayMode
-                        ? CockpitColors.safeGreen
-                        : CockpitColors.cardBorder,
-                  ),
+                  border: Border.all(color: CockpitColors.cardBorder),
                 ),
-                child: Icon(
-                  Icons.map_rounded,
-                  size: 18,
-                  color: _isPipOverlayMode
-                      ? CockpitColors.safeGreen
-                      : CockpitColors.textWhite,
+                child: const Icon(
+                  Icons.picture_in_picture_alt_rounded,
+                  size: 17,
+                  color: CockpitColors.safeGreen,
                 ),
               ),
             ),
           ],
         ),
       ),
+      bottomNavigationBar: CockpitBottomNavBar(
+        currentIndex: _isPipOverlayMode ? 2 : 1,
+        onTabSelected: (int index) {
+          if (index == 1) {
+            setState(() => _isPipOverlayMode = false);
+          } else if (index == 2) {
+            setState(() => _isPipOverlayMode = true);
+          } else if (index == 0) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+            );
+          } else if (index == 3) {
+            _stopTripAndNavigateToSummary();
+          }
+        },
+      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: _isPipOverlayMode ? 10 : 16,
+            vertical: _isPipOverlayMode ? 6 : 8,
+          ),
           child: Column(
             children: <Widget>[
-              // Warning Banner if active
               if (_activeWarningBannerText != null)
                 Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 10,
@@ -530,7 +631,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                   ),
                 ),
 
-              // Main Live Camera Viewport + Face Contour Overlay + Night Illumination Glow
+              // Main Live Camera Viewport OR Full-Screen Interactive Map + Night Glow + PiP Overlay
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -559,112 +660,149 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                       fit: StackFit.expand,
                       children: <Widget>[
                         if (_isPipOverlayMode)
-                          _buildPipNavigationView(isEyesOpen)
+                          LiveNavigationMapView(
+                            pipCameraPreview: _buildCameraHudView(isEyesOpen),
+                            isEyesOpen: isEyesOpen,
+                            onTriggerSystemPip: _triggerSystemPipWindow,
+                          )
                         else
                           _buildCameraHudView(isEyesOpen),
 
-                        // Top-Left LIVE Badge + Elapsed Duration
-                        Positioned(
-                          top: 14,
-                          left: 14,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: CockpitColors.bg.withValues(alpha: 0.88),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: CockpitColors.cardBorder),
-                            ),
+                        // Top Status Row (shown on Camera AI tab so it never overlaps the Map's route header)
+                        if (!_isPipOverlayMode)
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            right: 12,
                             child: Row(
-                              mainAxisSize: MainAxisSize.min,
                               children: <Widget>[
                                 Container(
-                                  width: 8,
-                                  height: 8,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: hasFace
-                                        ? CockpitColors.safeGreen
-                                        : CockpitColors.warningAmber,
-                                    shape: BoxShape.circle,
+                                    color:
+                                        CockpitColors.bg.withValues(alpha: 0.88),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: CockpitColors.cardBorder),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: hasFace
+                                              ? CockpitColors.safeGreen
+                                              : CockpitColors.warningAmber,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        'LIVE • ${_formatDuration(appState.driveDuration)}',
+                                        style: const TextStyle(
+                                          color: CockpitColors.textWhite,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                Text(
-                                  'LIVE • ${_formatDuration(appState.driveDuration)}',
-                                  style: const TextStyle(
-                                    color: CockpitColors.textWhite,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
+                                // Live Safety Score Pill
+                                Flexible(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: CockpitColors.bg
+                                          .withValues(alpha: 0.88),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: liveScore >= 80
+                                            ? CockpitColors.safeGreen
+                                            : CockpitColors.warningAmber,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '${appState.t('liveScore')}: $liveScore%',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: liveScore >= 80
+                                            ? CockpitColors.safeGreen
+                                            : CockpitColors.warningAmber,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                // Background Guard Active Toggle Pill
+                                Flexible(
+                                  child: GestureDetector(
+                                    onTap: _toggleBackgroundGuard,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _isBackgroundGuardEnabled
+                                            ? CockpitColors.safeGreen
+                                                .withValues(alpha: 0.18)
+                                            : CockpitColors.bg
+                                                .withValues(alpha: 0.84),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: _isBackgroundGuardEnabled
+                                              ? CockpitColors.safeGreen
+                                              : CockpitColors.cardBorder,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: <Widget>[
+                                          Icon(
+                                            Icons.shield_rounded,
+                                            size: 12,
+                                            color: _isBackgroundGuardEnabled
+                                                ? CockpitColors.safeGreen
+                                                : CockpitColors.textMuted,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              appState.t('bgModeLabel'),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: _isBackgroundGuardEnabled
+                                                    ? CockpitColors.safeGreen
+                                                    : CockpitColors.textMuted,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
 
-                        // Top-Center Live Safety Score HUD Pill
-                        Positioned(
-                          top: 14,
-                          child: Align(
-                            alignment: Alignment.topCenter,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: CockpitColors.bg.withValues(alpha: 0.88),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: liveScore >= 80
-                                      ? CockpitColors.safeGreen
-                                      : CockpitColors.warningAmber,
-                                ),
-                              ),
-                              child: Text(
-                                '${appState.t('liveScore')}: $liveScore%',
-                                style: TextStyle(
-                                  color: liveScore >= 80
-                                      ? CockpitColors.safeGreen
-                                      : CockpitColors.warningAmber,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // Top-Right Head Pose Pill
-                        if (hasFace && !_isPipOverlayMode)
-                          Positioned(
-                            top: 14,
-                            right: 14,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: CockpitColors.bg.withValues(alpha: 0.88),
-                                borderRadius: BorderRadius.circular(12),
-                                border:
-                                    Border.all(color: CockpitColors.cardBorder),
-                              ),
-                              child: Text(
-                                'Pitch: ${_headPitch.toStringAsFixed(0)}° • Yaw: ${_headYaw.toStringAsFixed(0)}°',
-                                style: const TextStyle(
-                                  color: CockpitColors.textMuted,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                        // Bottom Floating Telemetry: EAR + Left/Right Eye status + Yawns
+                        // Bottom Floating EAR Pill + Yawns & Blinks Counter
                         if (!_isPipOverlayMode)
                           Positioned(
                             bottom: 14,
@@ -770,95 +908,106 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
 
-              // Real-Time Telemetry Bar (Fatigue Level, Eye Openness, Stop Trip Button)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: CockpitColors.card,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: CockpitColors.cardBorder),
-                ),
-                child: Column(
-                  children: <Widget>[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        Text(
-                          appState.t('tripInProgress'),
-                          style: const TextStyle(
-                            color: CockpitColors.textMuted,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.9,
+              // Real-Time Telemetry Bar (shown on Camera AI tab; hidden on Map tab so Map is 100% full-screen)
+              if (!_isPipOverlayMode) ...<Widget>[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: CockpitColors.card,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: CockpitColors.cardBorder),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          Flexible(
+                            child: Text(
+                              appState.t('tripInProgress'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: CockpitColors.textMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.9,
+                              ),
+                            ),
                           ),
-                        ),
-                        Text(
-                          'MAR: ${_liveMar.toStringAsFixed(2)} • ${fatiguePct > 50 ? appState.t('warningStatus') : appState.t('optimalStatus')}',
-                          style: TextStyle(
-                            color: fatiguePct > 50
-                                ? CockpitColors.warningAmber
-                                : CockpitColors.safeGreen,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'MAR: ${_liveMar.toStringAsFixed(2)} • Pitch: ${_headPitch.toStringAsFixed(0)}° • Yaw: ${_headYaw.toStringAsFixed(0)}°',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: fatiguePct > 50
+                                    ? CockpitColors.warningAmber
+                                    : CockpitColors.safeGreen,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: _buildGaugeCard(
-                            label: appState.t('fatigueLevel'),
-                            valueText:
-                                '${fatiguePct.toString().padLeft(2, '0')}%',
-                            progress: fatiguePct / 100.0,
-                            color: fatiguePct > 60
-                                ? CockpitColors.dangerRed
-                                : CockpitColors.safeGreen,
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: _buildGaugeCard(
+                              label: appState.t('fatigueLevel'),
+                              valueText:
+                                  '${fatiguePct.toString().padLeft(2, '0')}%',
+                              progress: fatiguePct / 100.0,
+                              color: fatiguePct > 60
+                                  ? CockpitColors.dangerRed
+                                  : CockpitColors.safeGreen,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildGaugeCard(
-                            label: appState.t('eyeOpenness'),
-                            valueText: '$eyeOpenPct%',
-                            progress: avgEyeOpen,
-                            color: isEyesOpen
-                                ? CockpitColors.safeGreen
-                                : CockpitColors.dangerRed,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildGaugeCard(
+                              label: appState.t('eyeOpenness'),
+                              valueText: '$eyeOpenPct%',
+                              progress: avgEyeOpen,
+                              color: isEyesOpen
+                                  ? CockpitColors.safeGreen
+                                  : CockpitColors.dangerRed,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: CockpitColors.dangerRed,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CockpitColors.dangerRed,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
-                        ),
-                        onPressed: _stopTripAndNavigateToSummary,
-                        icon: const Icon(Icons.stop_rounded, size: 22),
-                        label: Text(
-                          appState.t('stopTrip'),
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
+                          onPressed: _stopTripAndNavigateToSummary,
+                          icon: const Icon(Icons.stop_rounded, size: 22),
+                          label: Text(
+                            appState.t('stopTrip'),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -876,25 +1025,30 @@ class _MonitoringScreenState extends State<MonitoringScreen>
           Container(
             color: const Color(0xFF090D12),
             alignment: Alignment.center,
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const CircularProgressIndicator(
-                  color: CockpitColors.safeGreen,
-                ),
-                if (_cameraErrorText != null) ...<Widget>[
-                  const SizedBox(height: 12),
+            padding: const EdgeInsets.all(6),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    Icons.face_retouching_natural_rounded,
+                    color: isEyesOpen
+                        ? CockpitColors.safeGreen
+                        : CockpitColors.dangerRed,
+                    size: 28,
+                  ),
+                  const SizedBox(height: 4),
                   Text(
-                    _cameraErrorText!,
-                    textAlign: TextAlign.center,
+                    _cameraErrorText ?? 'EAR: ${_liveEar.toStringAsFixed(2)}',
                     style: const TextStyle(
-                      color: CockpitColors.textMuted,
-                      fontSize: 12,
+                      color: CockpitColors.textWhite,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
           ),
         CustomPaint(
@@ -907,83 +1061,6 @@ class _MonitoringScreenState extends State<MonitoringScreen>
             isEyesOpen: isEyesOpen,
             isYawning: _liveMar > 0.48,
             liveEar: _liveEar,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPipNavigationView(bool isEyesOpen) {
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        CustomPaint(painter: MapNavigationBackgroundPainter()),
-        Positioned(
-          top: 52,
-          left: 14,
-          right: 14,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: CockpitColors.card.withValues(alpha: 0.94),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: CockpitColors.cardBorder),
-            ),
-            child: const Row(
-              children: <Widget>[
-                Icon(
-                  Icons.turn_right_rounded,
-                  color: CockpitColors.safeGreen,
-                  size: 28,
-                ),
-                SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      '250 m',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      'Dostyk Ave • 2GIS Navigation',
-                      style: TextStyle(
-                        color: CockpitColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          top: 125,
-          right: 14,
-          width: 118,
-          height: 152,
-          child: Container(
-            decoration: BoxDecoration(
-              color: CockpitColors.bg,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isEyesOpen
-                    ? CockpitColors.safeGreen
-                    : CockpitColors.dangerRed,
-                width: 2,
-              ),
-              boxShadow: const <BoxShadow>[
-                BoxShadow(color: Colors.black54, blurRadius: 16),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: _buildCameraHudView(isEyesOpen),
-            ),
           ),
         ),
       ],
