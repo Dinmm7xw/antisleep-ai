@@ -58,7 +58,6 @@ class AppLocalizations {
       'tip2': '• Жиі есінеу мен кірпіктің ауырлауы — микро-ұйқының алғашқы белгісі.',
       'tip3': '• Салонды салқын ұстаңыз (+18..+20°C) және таза ауа кіргізіңіз.',
       'tip4': '• Түнгі сапарда (02:00 – 06:00) шаршау қаупі 4 есе артады.',
-<<<<<<< HEAD
       'bgModeLabel': 'Фондық режим (PiP)',
       'bgModeActive': 'ФОНДЫҚ БАҚЫЛАУ ҚОСУЛЫ',
       'bgModeSub': '2GIS / Яндекс Карта ашық кезде де камера жұмыс істейді',
@@ -79,8 +78,7 @@ class AppLocalizations {
       'navMonitor': 'Бақылау',
       'navMap': 'Карта',
       'navSummary': 'Нәтиже',
-=======
-      // New Enhanced Cockpit Keys
+      // Enhanced Cockpit Keys
       'sensitivityMode': 'Сезімталдық режимі',
       'modeCity': 'Қала',
       'modeHighway': 'Трасса',
@@ -102,7 +100,6 @@ class AppLocalizations {
       'badgeAlertDriver': 'Өте сергек жүргізуші ★★★',
       'badgeCautiousDriver': 'Қалыпты деңгей ★★☆',
       'badgeFatiguedDriver': 'Шаршау анықталды! Демалыңыз ⚠',
-      // Navigation & Route Planner
       'navRouteTitle': 'Маршрут және Навигация',
       'whereToPrompt': 'Қайда барамыз? (Медеу, Астана...)',
       'startNav': 'НАВИГАЦИЯНЫ ҚОСУ',
@@ -118,7 +115,6 @@ class AppLocalizations {
       'nextTurn': '250 м оңға бұрылыңыз (Достық даңғылы)',
       'speedLimit': 'Жылдамдық',
       'pipCameraHud': 'Камера бақылауы (PiP)',
->>>>>>> 37898a869ddd23a843771de1833c77a2ecfd4c94
     },
     'ru': <String, String>{
       'appTitle': 'AntiSleep AI',
@@ -176,7 +172,6 @@ class AppLocalizations {
       'tip2': '• Частое зевание и тяжелые веки — предвестники микросна.',
       'tip3': '• Поддерживайте прохладу в салоне (+18..+20°C).',
       'tip4': '• В часы с 02:00 до 06:00 риск засыпания максимален.',
-<<<<<<< HEAD
       'bgModeLabel': 'Фоновый режим (PiP)',
       'bgModeActive': 'ФОНОВЫЙ РЕЖИМ АКТИВЕН',
       'bgModeSub': 'Контроль сна работает поверх 2ГИС, Яндекс.Карт и других окон',
@@ -197,8 +192,7 @@ class AppLocalizations {
       'navMonitor': 'Камера ИИ',
       'navMap': 'Карта',
       'navSummary': 'Сводка',
-=======
-      // New Enhanced Cockpit Keys
+      // Enhanced Cockpit Keys
       'sensitivityMode': 'Режим чувствительности',
       'modeCity': 'Город',
       'modeHighway': 'Трасса',
@@ -220,7 +214,6 @@ class AppLocalizations {
       'badgeAlertDriver': 'Максимальная бдительность ★★★',
       'badgeCautiousDriver': 'Нормальный уровень ★★☆',
       'badgeFatiguedDriver': 'Обнаружена усталость! Отдохните ⚠',
-      // Navigation & Route Planner
       'navRouteTitle': 'Маршрут и Навигация',
       'whereToPrompt': 'Куда едем? (Медеу, Астана...)',
       'startNav': 'НАЧАТЬ НАВИГАЦИЮ',
@@ -236,7 +229,6 @@ class AppLocalizations {
       'nextTurn': 'Через 250 м поверните направо (пр. Достык)',
       'speedLimit': 'Скорость',
       'pipCameraHud': 'Камера контроля (PiP)',
->>>>>>> 37898a869ddd23a843771de1833c77a2ecfd4c94
     },
     'en': <String, String>{
       'appTitle': 'AntiSleep AI',
@@ -293,7 +285,6 @@ class AppLocalizations {
       'tip2': '• Frequent yawning and slow blinks precede micro-sleep.',
       'tip3': '• Keep cabin temperature cool (+18..+20°C) with fresh air.',
       'tip4': '• Drowsiness risk quadruples between 02:00 AM and 06:00 AM.',
-<<<<<<< HEAD
       'bgModeLabel': 'Background Mode (PiP)',
       'bgModeActive': 'BACKGROUND GUARD ACTIVE',
       'bgModeSub': 'Continues monitoring over 2GIS, Maps, and other apps',
@@ -314,8 +305,7 @@ class AppLocalizations {
       'navMonitor': 'AI Camera',
       'navMap': 'Map',
       'navSummary': 'Summary',
-=======
-      // New Enhanced Cockpit Keys
+      // Enhanced Cockpit Keys
       'sensitivityMode': 'Sensitivity Mode',
       'modeCity': 'City',
       'modeHighway': 'Highway',
@@ -337,7 +327,6 @@ class AppLocalizations {
       'badgeAlertDriver': 'Peak Alert Driver ★★★',
       'badgeCautiousDriver': 'Standard Drive ★★☆',
       'badgeFatiguedDriver': 'Fatigue Detected! Pull Over ⚠',
-      // Navigation & Route Planner
       'navRouteTitle': 'Route & Navigation',
       'whereToPrompt': 'Where to? (Medeu, Astana...)',
       'startNav': 'START NAVIGATION',
@@ -353,7 +342,6 @@ class AppLocalizations {
       'nextTurn': 'In 250 m turn right (Dostyk Ave)',
       'speedLimit': 'Speed',
       'pipCameraHud': 'Driver Monitor (PiP)',
->>>>>>> 37898a869ddd23a843771de1833c77a2ecfd4c94
     },
   };
 

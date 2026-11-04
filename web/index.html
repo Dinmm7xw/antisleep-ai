@@ -262,6 +262,18 @@
     window._antiSleepYandexEndMark = null;
     window._antiSleepClickedCoordsJson = "";
 
+    window._antiSleepCreateYandexMapDiv = function(viewId, startLat, startLng, endLat, endLng) {
+      const div = document.createElement('div');
+      div.id = 'yandex-map-container-' + viewId;
+      div.style.width = '100%';
+      div.style.height = '100%';
+      div.style.border = 'none';
+      setTimeout(() => {
+        window._antiSleepMountYandexMap(div, startLat, startLng, endLat, endLng);
+      }, 120);
+      return div;
+    };
+
     window._antiSleepMountYandexMap = function(containerEl, startLat, startLng, endLat, endLng) {
       if (!containerEl) return;
       if (typeof ymaps === 'undefined') {

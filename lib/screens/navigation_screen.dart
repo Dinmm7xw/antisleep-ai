@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -55,7 +54,11 @@ class _NavigationScreenState extends State<NavigationScreen>
       distanceKm: 14.8,
       durationMinutes: 24,
       icon: Icons.terrain_rounded,
-      restStops: <String>['Compass АЗС (Достық)', 'Starbucks Coffee', 'Бұлақ демалысы'],
+      restStops: <String>[
+        'Compass АЗС (Достық)',
+        'Starbucks Coffee',
+        'Бұлақ демалысы'
+      ],
     ),
     RouteDestination(
       title: 'Қонаев қаласы (Қапшағай трассасы)',
@@ -63,7 +66,11 @@ class _NavigationScreenState extends State<NavigationScreen>
       distanceKm: 78.4,
       durationMinutes: 58,
       icon: Icons.alt_route_rounded,
-      restStops: <String>['QazaqOil Трасса АЗС', 'Compass Oasis Motel', 'Food Court 24/7'],
+      restStops: <String>[
+        'QazaqOil Трасса АЗС',
+        'Compass Oasis Motel',
+        'Food Court 24/7'
+      ],
     ),
     RouteDestination(
       title: 'Астана (Нұр-Сұлтан)',
@@ -71,7 +78,11 @@ class _NavigationScreenState extends State<NavigationScreen>
       distanceKm: 1210.0,
       durationMinutes: 840,
       icon: Icons.flight_takeoff_rounded,
-      restStops: <String>['Балқаш демалыс бекеті', 'Қарағанды Кемпинг', 'Helios АЗС'],
+      restStops: <String>[
+        'Балқаш демалыс бекеті',
+        'Қарағанды Кемпинг',
+        'Helios АЗС'
+      ],
     ),
     RouteDestination(
       title: 'Шымбұлақ (Shymbulak)',
@@ -92,7 +103,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   ];
 
   late RouteDestination _selectedDestination;
-  bool _isNavigating = true;
   int _currentSpeed = 68;
   Timer? _speedTimer;
   Timer? _drowsinessSimulationCheck;
@@ -163,7 +173,8 @@ class _NavigationScreenState extends State<NavigationScreen>
       builder: (BuildContext modalCtx) {
         return StatefulBuilder(
           builder: (BuildContext ctx, StateSetter setSheetState) {
-            final List<RouteDestination> filtered = _destinations.where((RouteDestination d) {
+            final List<RouteDestination> filtered =
+                _destinations.where((RouteDestination d) {
               final String q = _searchController.text.toLowerCase();
               return d.title.toLowerCase().contains(q) ||
                   d.subtitle.toLowerCase().contains(q);
@@ -210,14 +221,16 @@ class _NavigationScreenState extends State<NavigationScreen>
                         filled: true,
                         fillColor: const Color(0xFF0E131A),
                         hintText: appState.t('searchDestination'),
-                        hintStyle: const TextStyle(color: CockpitColors.textMuted),
+                        hintStyle:
+                            const TextStyle(color: CockpitColors.textMuted),
                         prefixIcon: const Icon(
                           Icons.search_rounded,
                           color: CockpitColors.safeGreen,
                         ),
                         suffixIcon: _searchController.text.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear, color: Colors.white54),
+                                icon: const Icon(Icons.clear,
+                                    color: Colors.white54),
                                 onPressed: () {
                                   _searchController.clear();
                                   setSheetState(() {});
@@ -230,11 +243,13 @@ class _NavigationScreenState extends State<NavigationScreen>
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: CockpitColors.cardBorder),
+                          borderSide:
+                              const BorderSide(color: CockpitColors.cardBorder),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: CockpitColors.cardBorder),
+                          borderSide:
+                              const BorderSide(color: CockpitColors.cardBorder),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
@@ -255,9 +270,11 @@ class _NavigationScreenState extends State<NavigationScreen>
                           const SizedBox(width: 8),
                           _buildFilterChip('gas', appState.t('categoryGas')),
                           const SizedBox(width: 8),
-                          _buildFilterChip('coffee', appState.t('categoryCoffee')),
+                          _buildFilterChip(
+                              'coffee', appState.t('categoryCoffee')),
                           const SizedBox(width: 8),
-                          _buildFilterChip('motel', appState.t('categoryMotel')),
+                          _buildFilterChip(
+                              'motel', appState.t('categoryMotel')),
                         ],
                       ),
                     ),
@@ -269,11 +286,12 @@ class _NavigationScreenState extends State<NavigationScreen>
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: filtered.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(color: CockpitColors.cardBorder, height: 14),
+                        separatorBuilder: (_, __) => const Divider(
+                            color: CockpitColors.cardBorder, height: 14),
                         itemBuilder: (BuildContext _, int idx) {
                           final RouteDestination d = filtered[idx];
-                          final bool isSelected = _selectedDestination.title == d.title;
+                          final bool isSelected =
+                              _selectedDestination.title == d.title;
                           return InkWell(
                             onTap: () {
                               setState(() {
@@ -309,7 +327,8 @@ class _NavigationScreenState extends State<NavigationScreen>
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: <Widget>[
                                         Text(
                                           d.title,
@@ -380,13 +399,15 @@ class _NavigationScreenState extends State<NavigationScreen>
               : const Color(0xFF131922),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? CockpitColors.safeGreen : CockpitColors.cardBorder,
+            color:
+                isSelected ? CockpitColors.safeGreen : CockpitColors.cardBorder,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? CockpitColors.safeGreen : CockpitColors.textMuted,
+            color:
+                isSelected ? CockpitColors.safeGreen : CockpitColors.textMuted,
             fontSize: 11,
             fontWeight: FontWeight.w700,
           ),
@@ -595,7 +616,8 @@ class _NavigationScreenState extends State<NavigationScreen>
               left: 14,
               right: 14,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFF161E28).withValues(alpha: 0.94),
                   borderRadius: BorderRadius.circular(16),
@@ -630,7 +652,8 @@ class _NavigationScreenState extends State<NavigationScreen>
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: CockpitColors.safeGreen.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(8),
@@ -655,7 +678,8 @@ class _NavigationScreenState extends State<NavigationScreen>
               left: 14,
               right: 14,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
                   color: const Color(0xFF10151E),
                   borderRadius: BorderRadius.circular(22),
@@ -735,7 +759,8 @@ class _NavigationScreenState extends State<NavigationScreen>
                       icon: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: CockpitColors.dangerRed.withValues(alpha: 0.16),
+                          color:
+                              CockpitColors.dangerRed.withValues(alpha: 0.16),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: CockpitColors.dangerRed),
                         ),

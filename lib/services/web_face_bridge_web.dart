@@ -28,9 +28,9 @@ external void _jsToggleWebPip();
 @JS('_antiSleepOpenUrl')
 external void _jsOpenUrl(JSString url);
 
-@JS('_antiSleepMountYandexMap')
-external void _jsMountYandexMap(
-  JSObject container,
+@JS('_antiSleepCreateYandexMapDiv')
+external JSObject _jsCreateYandexMapDiv(
+  JSNumber viewId,
   JSNumber startLat,
   JSNumber startLng,
   JSNumber endLat,
@@ -53,25 +53,11 @@ external void _jsMoveYandexCenter(
   JSNumber zoom,
 );
 
-@JS('document.createElement')
-external JSObject _jsCreateElement(JSString tagName);
-
 @JS('_antiSleepStartWebSiren')
 external void _jsStartWebSiren();
 
 @JS('_antiSleepStopWebSiren')
 external void _jsStopWebSiren();
-
-extension type _HtmlDivElement(JSObject _) implements JSObject {
-  external set id(String value);
-  external _CssStyle get style;
-}
-
-extension type _CssStyle(JSObject _) implements JSObject {
-  external set width(String value);
-  external set height(String value);
-  external set border(String value);
-}
 
 /// Web implementation reading MediaPipe 468-Landmark telemetry, HTML5 GPS, Yandex Maps 2.1 JS API, and Web PiP.
 class WebFaceBridge {
@@ -177,24 +163,13 @@ class WebFaceBridge {
     _registeredViews.add(viewType);
 
     ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
-      final _HtmlDivElement div =
-          _HtmlDivElement(_jsCreateElement('div'.toJS));
-      div.id = 'yandex-map-container-$viewId';
-      div.style.width = '100%';
-      div.style.height = '100%';
-      div.style.border = 'none';
-
-      Future<void>.delayed(const Duration(milliseconds: 120), () {
-        _jsMountYandexMap(
-          div,
-          startLat.toJS,
-          startLng.toJS,
-          endLat.toJS,
-          endLng.toJS,
-        );
-      });
-
-      return div;
+      return _jsCreateYandexMapDiv(
+        viewId.toJS,
+        startLat.toJS,
+        startLng.toJS,
+        endLat.toJS,
+        endLng.toJS,
+      );
     });
   }
 
