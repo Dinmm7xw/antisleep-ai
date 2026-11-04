@@ -13,6 +13,7 @@ import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
 import '../widgets/painters/face_mesh_overlay_painter.dart';
 import 'danger_alert_screen.dart';
+import 'navigation_screen.dart';
 import 'summary_screen.dart';
 
 /// Screen 2: Active Monitoring HUD Screen with Live Telemetry & Night Illumination
@@ -917,47 +918,79 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        CustomPaint(painter: MapNavigationBackgroundPainter()),
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const NavigationScreen(),
+              ),
+            );
+          },
+          child: CustomPaint(
+            painter: InteractiveAutomotiveMapPainter(
+              progress: 0.45,
+              destinationName: 'Медеу (Medeu)',
+              restStops: const <String>['Compass АЗС', 'Coffee Rest'],
+            ),
+          ),
+        ),
         Positioned(
           top: 52,
           left: 14,
           right: 14,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: CockpitColors.card.withValues(alpha: 0.94),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: CockpitColors.cardBorder),
-            ),
-            child: const Row(
-              children: <Widget>[
-                Icon(
-                  Icons.turn_right_rounded,
-                  color: CockpitColors.safeGreen,
-                  size: 28,
+          child: GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const NavigationScreen(),
                 ),
-                SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      '250 m',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: CockpitColors.card.withValues(alpha: 0.94),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: CockpitColors.cardBorder),
+              ),
+              child: const Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.turn_right_rounded,
+                    color: CockpitColors.safeGreen,
+                    size: 28,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '250 m • Достық даңғылы',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Text(
+                          'Медеу • Толық картаны ашу →',
+                          style: TextStyle(
+                            color: CockpitColors.safeGreen,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      'Dostyk Ave • 2GIS Navigation',
-                      style: TextStyle(
-                        color: CockpitColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                  Icon(
+                    Icons.open_in_full_rounded,
+                    color: CockpitColors.safeGreen,
+                    size: 18,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

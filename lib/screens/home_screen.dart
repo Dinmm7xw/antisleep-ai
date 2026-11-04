@@ -14,6 +14,7 @@ import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
 import '../widgets/painters/dashboard_illustration_painter.dart';
 import 'monitoring_screen.dart';
+import 'navigation_screen.dart';
 
 /// Screen 1: Futuristic Automotive Cockpit HomeScreen
 class HomeScreen extends StatefulWidget {
@@ -689,6 +690,107 @@ class _HomeScreenState extends State<HomeScreen>
                       ],
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // Interactive Route & Navigation Card
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NavigationScreen(),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: <Color>[
+                        Color(0xFF131B26),
+                        Color(0xFF182332),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: CockpitColors.safeGreen.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: CockpitColors.safeGreen.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.map_rounded,
+                          color: CockpitColors.safeGreen,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Text(
+                                  appState.t('navRouteTitle'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: CockpitColors.safeGreen
+                                        .withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'GPS',
+                                    style: TextStyle(
+                                      color: CockpitColors.safeGreen,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              appState.t('whereToPrompt'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: CockpitColors.textMuted,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: CockpitColors.safeGreen,
+                        size: 16,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
