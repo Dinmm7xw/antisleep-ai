@@ -167,7 +167,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   bool _isNavigating = false;
   bool _isFollowingCar = true;
   bool _is3DPerspective = false;
-  bool _isVoiceEnabled = true;
+  bool _isVoiceEnabled = false; // Sound on map completely disabled by default
   bool _showParkingOverlay = false;
   bool _showRouteBuilderPanel = false;
   bool _showMenuSheet = false;
@@ -1407,120 +1407,41 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                             ),
                           ),
                         ),
-                        // 2GIS Signature 3D Blue Navigation Wedge + Circular Avatar ("3")
+                        // 2GIS Signature 3D Blue Navigation Wedge Cursor (Clean, no avatar circle)
                         Marker(
                           point: _currentLocation,
-                          width: 90,
-                          height: 76,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: <Widget>[
-                              // 3D Blue Navigator Wedge Arrow
-                              Positioned(
-                                right: 8,
-                                bottom: 6,
-                                child: Transform.rotate(
-                                  angle: _is3DPerspective
-                                      ? 0.0
-                                      : (_headingDeg * math.pi / 180.0),
-                                  child: Container(
-                                    width: 42,
-                                    height: 42,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1E5EFF),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2.8,
-                                      ),
-                                      boxShadow: const <BoxShadow>[
-                                        BoxShadow(
-                                          color: Colors.black45,
-                                          blurRadius: 10,
-                                          offset: Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.navigation_rounded,
-                                      color: Colors.white,
-                                      size: 26,
-                                    ),
+                          width: 48,
+                          height: 48,
+                          child: Center(
+                            child: Transform.rotate(
+                              angle: _is3DPerspective
+                                  ? 0.0
+                                  : (_headingDeg * math.pi / 180.0),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E5EFF),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 3.0,
                                   ),
+                                  boxShadow: const <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.black45,
+                                      blurRadius: 10,
+                                      offset: Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.navigation_rounded,
+                                  color: Colors.white,
+                                  size: 26,
                                 ),
                               ),
-                              // 2GIS Circular Driver Avatar with Status Badge ("3")
-                              Positioned(
-                                left: 4,
-                                top: 4,
-                                child: Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: <Color>[
-                                        Color(0xFF3A506B),
-                                        Color(0xFF0B132B),
-                                      ],
-                                    ),
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 3.0,
-                                    ),
-                                    boxShadow: const <BoxShadow>[
-                                      BoxShadow(
-                                        color: Colors.black38,
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Stack(
-                                    clipBehavior: Clip.none,
-                                    children: <Widget>[
-                                      Center(
-                                        child: Icon(
-                                          Icons.directions_car_filled_rounded,
-                                          color: widget.isEyesOpen
-                                              ? const Color(0xFF00E676)
-                                              : CockpitColors.dangerRed,
-                                          size: 22,
-                                        ),
-                                      ),
-                                      Positioned(
-                                        right: -4,
-                                        bottom: -2,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 5,
-                                            vertical: 1,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF494F56),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 1.5,
-                                            ),
-                                          ),
-                                          child: const Text(
-                                            '3',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       ],

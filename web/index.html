@@ -369,17 +369,11 @@
           }
         });
 
-        // Create 2GIS 3D Blue Navigation Wedge + Circular Driver Avatar Marker
+        // Create 2GIS 3D Blue Navigation Wedge Marker
         window._antiSleep2GisCarMarker = new mapgl.HtmlMarker(map, {
           coordinates: [startLng, startLat],
-          html: `<div style="position:relative;width:82px;height:68px;pointer-events:none;transform:translate(-41px,-34px);">
-            <div style="position:absolute;right:6px;bottom:6px;width:40px;height:40px;border-radius:50%;background:#1E5EFF;border:3px solid #fff;box-shadow:0 4px 10px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
-            </div>
-            <div style="position:absolute;left:4px;top:4px;width:46px;height:46px;border-radius:50%;background:linear-gradient(180deg,#3A506B,#0B132B);border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
-              <span style="color:#00E676;font-weight:900;font-size:13px;font-family:sans-serif;">AI</span>
-              <div style="position:absolute;right:-4px;bottom:-2px;background:#494F56;color:#fff;font-size:9px;font-weight:900;padding:1px 5px;border-radius:10px;border:1.5px solid #fff;font-family:sans-serif;">3</div>
-            </div>
+          html: `<div style="width:44px;height:44px;border-radius:50%;background:#1E5EFF;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;transform:translate(-22px,-22px);pointer-events:none;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
           </div>`
         });
       } catch (err) {
