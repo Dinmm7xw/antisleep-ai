@@ -116,6 +116,21 @@
 
       window._antiSleepFindVideo = findActiveVideoElement;
 
+      // Release any orphan camera tracks
+      window._antiSleepReleaseCamera = function() {
+        try {
+          const vid = document.getElementById('_antiSleepFallbackVideo');
+          if (vid && vid.srcObject) {
+            vid.srcObject.getTracks().forEach(t => t.stop());
+            vid.srcObject = null;
+          }
+          if (capturedVideo && capturedVideo !== vid && capturedVideo.srcObject) {
+            capturedVideo.srcObject.getTracks().forEach(t => t.stop());
+            capturedVideo.srcObject = null;
+          }
+        } catch (e) {}
+      };
+
       // Ensure fallback camera stream if camera_web takes time
       window._antiSleepEnsureWebcam = async function() {
         const current = findActiveVideoElement();

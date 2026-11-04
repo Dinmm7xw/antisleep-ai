@@ -85,4 +85,5 @@ class WebFaceBridge {
   static void ensureWebcam() {}
   static void playKazakhVoice(String key) {}
   static void stopKazakhVoice() {}
+  static void releaseCamera() {}
 }

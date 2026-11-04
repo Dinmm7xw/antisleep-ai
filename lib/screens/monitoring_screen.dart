@@ -185,7 +185,12 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       );
       _lensDirection = frontCamera.lensDirection;
 
+      if (kIsWeb) {
+        WebFaceBridge.releaseCamera();
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
       await _cameraController?.dispose();
+      _cameraController = null;
 
       final CameraController controller = kIsWeb
           ? CameraController(
@@ -1043,12 +1048,45 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                   const SizedBox(height: 4),
                   Text(
                     _cameraErrorText ?? 'EAR: ${_liveEar.toStringAsFixed(2)}',
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: CockpitColors.textWhite,
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                  if (_cameraErrorText != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _cameraErrorText = 'Подключение...');
+                        _initFrontCamera(isRetry: false);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF19AA1E),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const <Widget>[
+                            Icon(Icons.refresh_rounded, size: 14, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text(
+                              'Повторить',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

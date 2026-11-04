@@ -88,6 +88,9 @@ external void _jsStopSpeech();
 @JS('_antiSleepEnsureWebcam')
 external void _jsEnsureWebcam();
 
+@JS('_antiSleepReleaseCamera')
+external void _jsReleaseCamera();
+
 @JS('_antiSleepPlayKazakhVoice')
 external void _jsPlayKazakhVoice(JSString key);
 
@@ -343,6 +346,12 @@ class WebFaceBridge {
   static void stopKazakhVoice() {
     try {
       _jsStopKazakhVoice();
+    } catch (_) {}
+  }
+
+  static void releaseCamera() {
+    try {
+      _jsReleaseCamera();
     } catch (_) {}
   }
 }
