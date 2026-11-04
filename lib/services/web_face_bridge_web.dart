@@ -18,6 +18,9 @@ external void _jsStartWebGps();
 @JS('_antiSleepToggleWebPip')
 external void _jsToggleWebPip();
 
+@JS('_antiSleepOpenUrl')
+external void _jsOpenUrl(JSString url);
+
 @JS('_antiSleepStartWebSiren')
 external void _jsStartWebSiren();
 
@@ -124,6 +127,12 @@ class WebFaceBridge {
   static void toggleWebPictureInPicture() {
     try {
       _jsToggleWebPip();
+    } catch (_) {}
+  }
+
+  static void openExternalUrl(String url) {
+    try {
+      _jsOpenUrl(url.toJS);
     } catch (_) {}
   }
 

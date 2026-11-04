@@ -50,6 +50,7 @@ class WebFaceBridge {
   static WebGpsData? pollLatestWebGps() => null;
   static void startWebGps() {}
   static void toggleWebPictureInPicture() {}
+  static void openExternalUrl(String url) {}
   static void startWebSiren() {}
   static void stopWebSiren() {}
 }

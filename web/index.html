@@ -246,6 +246,12 @@
       return false;
     };
 
+    window._antiSleepOpenUrl = function(url) {
+      try {
+        window.open(url, '_blank');
+      } catch (e) {}
+    };
+
     // Web Audio API Dual-Tone 880Hz/440Hz Siren for reliable sound in Chrome/Edge
     window._antiSleepStartWebSiren = function() {
       try {
