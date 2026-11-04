@@ -98,9 +98,32 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      WebFaceBridge.registerYandexMapView(
+        'antisleep-yandex-map',
+        _pointA.latitude,
+        _pointA.longitude,
+        _pointB.latitude,
+        _pointB.longitude,
+      );
+    }
     _traveledTrail.add(_currentLocation);
     _fetchRealRoadRoute(_pointA, _pointB);
     _startGpsTracking();
+  }
+
+  void _syncRouteToRealYandexMap() {
+    if (!kIsWeb) return;
+    final List<List<double>> pts = _routeWaypoints
+        .map((LatLng p) => <double>[p.latitude, p.longitude])
+        .toList();
+    WebFaceBridge.updateYandexRoute(
+      pts,
+      _pointA.latitude,
+      _pointA.longitude,
+      _pointB.latitude,
+      _pointB.longitude,
+    );
   }
 
   /// Queries OSRM real road routing engine for exact street geometry, distance, ETA, and turn-by-turn street names.
@@ -195,6 +218,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
               _nextManeuverIcon = turnIcon;
               _isCalculatingRoute = false;
             });
+            _syncRouteToRealYandexMap();
             return;
           }
         }
@@ -225,6 +249,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
       _routeEtaMinutes = math.max(1, (fallbackDist / 750.0).round());
       _isCalculatingRoute = false;
     });
+    _syncRouteToRealYandexMap();
   }
 
   /// Geocodes an address string via OpenStreetMap Nominatim and returns its coordinates & short label.
@@ -272,6 +297,16 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     return null;
   }
 
+  void _moveActiveMap(LatLng center, double zoom) {
+    if (kIsWeb && _mapStyleIndex == 0) {
+      WebFaceBridge.moveYandexCenter(center.latitude, center.longitude, zoom);
+    } else {
+      try {
+        _mapController.move(center, zoom);
+      } catch (_) {}
+    }
+  }
+
   /// Resolves both Point A and Point B from the text fields and builds the road route.
   Future<void> _applyCustomRouteFromFields() async {
     HapticFeedback.selectionClick();
@@ -299,7 +334,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
       (_pointA.latitude + _pointB.latitude) / 2.0,
       (_pointA.longitude + _pointB.longitude) / 2.0,
     );
-    _mapController.move(center, 12.8);
+    _moveActiveMap(center, 12.8);
     await _fetchRealRoadRoute(_pointA, _pointB);
   }
 
@@ -368,6 +403,14 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     _gpsPollTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!mounted) return;
 
+      // 0. Check if user clicked on the real Yandex Map (ymaps.Map) to set Point A or Point B
+      if (kIsWeb) {
+        final Offset? clicked = WebFaceBridge.pollClickedYandexCoords();
+        if (clicked != null) {
+          _onMapTapped(LatLng(clicked.dx, clicked.dy));
+        }
+      }
+
       // 1. Poll real browser GPS on Web
       if (kIsWeb) {
         final WebGpsData? webGps = WebFaceBridge.pollLatestWebGps();
@@ -389,7 +432,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
             _pointA = newPos;
             _pointALabel = 'Моя геопозиция (GPS)';
             _fromController.text = _pointALabel;
-            _mapController.move(newPos, _zoom);
+            _moveActiveMap(newPos, _zoom);
             await _fetchRealRoadRoute(_pointA, _pointB);
           }
           if (mounted) setState(() {});
@@ -478,9 +521,9 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   }
 
   String get _activeMapStyleLabel {
-    if (_mapStyleIndex == 0) return 'Дневная 2ГИС/Яндекс';
+    if (_mapStyleIndex == 0) return 'Яндекс.Карта 2.1 (Пробки)';
     if (_mapStyleIndex == 1) return 'Кокпит Ночь';
-    return 'OSM Подробная';
+    return '2ГИС / OSM Схема';
   }
 
   void _onMapTapped(LatLng tappedLatLng) {
@@ -509,8 +552,11 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         return Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            // 1. Smooth 60FPS Interactive FlutterMap Canvas (Drag, Pinch/Wheel Zoom, Tap to set Point A / Point B)
-            FlutterMap(
+            // 1. Real Yandex Map 2.1 (with Live Traffic / Пробки) on Web OR Smooth 60FPS FlutterMap Canvas
+            if (kIsWeb && _mapStyleIndex == 0)
+              const HtmlElementView(viewType: 'antisleep-yandex-map')
+            else
+              FlutterMap(
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: _currentLocation,
@@ -1009,7 +1055,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                                         }
                                         _showRouteBuilderPanel = false;
                                       });
-                                      _mapController.move(place.coords, 13.2);
+                                      _moveActiveMap(place.coords, 13.2);
                                       _fetchRealRoadRoute(_pointA, _pointB);
                                     },
                                   ),
@@ -1112,7 +1158,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     icon: Icons.add_rounded,
                     onTap: () {
                       _zoom = (_zoom + 1.0).clamp(3.0, 18.5);
-                      _mapController.move(_mapController.camera.center, _zoom);
+                      if (kIsWeb && _mapStyleIndex == 0) {
+                        WebFaceBridge.moveYandexCenter(
+                          _currentLocation.latitude,
+                          _currentLocation.longitude,
+                          _zoom,
+                        );
+                      } else {
+                        _mapController.move(_mapController.camera.center, _zoom);
+                      }
                     },
                   ),
                   const SizedBox(height: 6),
@@ -1120,7 +1174,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     icon: Icons.remove_rounded,
                     onTap: () {
                       _zoom = (_zoom - 1.0).clamp(3.0, 18.5);
-                      _mapController.move(_mapController.camera.center, _zoom);
+                      if (kIsWeb && _mapStyleIndex == 0) {
+                        WebFaceBridge.moveYandexCenter(
+                          _currentLocation.latitude,
+                          _currentLocation.longitude,
+                          _zoom,
+                        );
+                      } else {
+                        _mapController.move(_mapController.camera.center, _zoom);
+                      }
                     },
                   ),
                   const SizedBox(height: 6),
@@ -1128,7 +1190,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     icon: Icons.my_location_rounded,
                     color: CockpitColors.safeGreen,
                     onTap: () {
-                      _mapController.move(_currentLocation, _zoom);
+                      if (kIsWeb && _mapStyleIndex == 0) {
+                        WebFaceBridge.moveYandexCenter(
+                          _currentLocation.latitude,
+                          _currentLocation.longitude,
+                          _zoom,
+                        );
+                      } else {
+                        _mapController.move(_currentLocation, _zoom);
+                      }
                     },
                   ),
                   const SizedBox(height: 6),

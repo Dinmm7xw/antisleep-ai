@@ -286,16 +286,16 @@
           const map = new ymaps.Map(containerEl, {
             center: [startLat, startLng],
             zoom: 13,
-            controls: ['trafficControl', 'typeSelector', 'zoomControl', 'geolocationControl']
+            controls: []
           }, {
             suppressMapOpenBlock: true
           });
 
-          // Enable Yandex Live Traffic Jams (Пробки) automatically
-          const trafficControl = map.controls.get('trafficControl');
-          if (trafficControl) {
-            trafficControl.showTraffic();
-          }
+          // Enable Yandex Live Traffic Jams (Пробки) cleanly without bulky white UI buttons
+          try {
+            const actualProvider = new ymaps.traffic.Provider.Actual({}, { infoLayerShown: true });
+            actualProvider.setMap(map);
+          } catch (e) {}
 
           window._antiSleepYandexMap = map;
 
@@ -349,15 +349,17 @@
         });
 
         window._antiSleepYandexStartMark = new ymaps.Placemark([startLat, startLng], {
-          iconCaption: "Вы здесь (GPS)"
+          iconContent: "А",
+          iconCaption: "Старт (А)"
         }, {
-          preset: "islands#greenAutoIcon"
+          preset: "islands#greenStretchyIcon"
         });
 
         window._antiSleepYandexEndMark = new ymaps.Placemark([endLat, endLng], {
-          iconCaption: "Финиш"
+          iconContent: "Б",
+          iconCaption: "Финиш (Б)"
         }, {
-          preset: "islands#redGovernmentCircleIcon"
+          preset: "islands#redStretchyIcon"
         });
 
         map.geoObjects.add(window._antiSleepYandexRouteLine);
