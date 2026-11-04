@@ -74,6 +74,7 @@ class WebFaceBridge {
     double pitchDeg,
   ) {}
   static Offset? pollClickedYandexCoords() => null;
+  static void playAlarmSound() => startWebSiren();
   static void startWebSiren() {}
   static void stopWebSiren() {}
   static void speakNavigationInstruction(String text) {}

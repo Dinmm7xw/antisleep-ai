@@ -132,6 +132,8 @@ class AppSessionState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSensitivityMode(SensitivityMode mode) => setSensitivity(mode);
+
   void toggleNightLight() {
     isNightLightEnabled = !isNightLightEnabled;
     notifyListeners();

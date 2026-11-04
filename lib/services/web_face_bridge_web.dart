@@ -285,6 +285,7 @@ class WebFaceBridge {
     } catch (_) {}
   }
 
+  static void playAlarmSound() => startWebSiren();
   static void startWebSiren() {
     try {
       _jsStartWebSiren();
