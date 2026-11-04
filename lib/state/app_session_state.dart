@@ -9,6 +9,13 @@ import '../core/localization/app_localizations.dart';
 /// Global list of available device cameras initialized at startup.
 List<CameraDescription> globalCameras = <CameraDescription>[];
 
+/// Sensitivity profiles for driver fatigue detection
+enum SensitivityMode {
+  city,
+  highway,
+  strict,
+}
+
 /// Immutable model representing a completed and saved driving session.
 class TripRecord {
   final DateTime timestamp;
@@ -59,7 +66,7 @@ class TripRecord {
 
 /// Global Application State Controller (Language + Real-Time Session Telemetry + Persistent History)
 class AppSessionState extends ChangeNotifier {
-  String _lang = 'kk'; // Default language: 'kk' per specification
+  String _lang = 'kk'; // Default language: 'kk'
   Duration driveDuration = Duration.zero;
   int microSleepEvents = 0;
   int totalYawns = 0;
@@ -77,6 +84,11 @@ class AppSessionState extends ChangeNotifier {
   bool isHapticsSupported = false;
   String activeCameraName = '';
 
+  // Advanced Cockpit Settings
+  SensitivityMode sensitivityMode = SensitivityMode.highway;
+  bool isNightLightEnabled = false;
+  double personalEarOffset = 0.0;
+
   // Saved trip history loaded/persisted on device
   final List<TripRecord> savedTrips = <TripRecord>[];
 
@@ -85,7 +97,24 @@ class AppSessionState extends ChangeNotifier {
   double get averageEar =>
       _totalFramesAnalyzed > 0 ? (_earSum / _totalFramesAnalyzed) : 0.31;
 
-  /// PERCLOS: Percentage of time eyes were closed (< 0.25) over the trip
+  /// Effective EAR threshold taking into account sensitivity mode and personal calibration
+  double get effectiveEarThreshold {
+    double base;
+    switch (sensitivityMode) {
+      case SensitivityMode.city:
+        base = 0.20;
+        break;
+      case SensitivityMode.highway:
+        base = 0.22;
+        break;
+      case SensitivityMode.strict:
+        base = 0.24;
+        break;
+    }
+    return (base + personalEarOffset).clamp(0.16, 0.30);
+  }
+
+  /// PERCLOS: Percentage of time eyes were closed over the trip
   double get perclosPercent => _totalFramesAnalyzed > 0
       ? ((_closedEyeFrames / _totalFramesAnalyzed) * 100.0).clamp(0.0, 100.0)
       : 0.0;
@@ -96,6 +125,21 @@ class AppSessionState extends ChangeNotifier {
       _lang = newLang;
       notifyListeners();
     }
+  }
+
+  void setSensitivity(SensitivityMode mode) {
+    sensitivityMode = mode;
+    notifyListeners();
+  }
+
+  void toggleNightLight() {
+    isNightLightEnabled = !isNightLightEnabled;
+    notifyListeners();
+  }
+
+  void setPersonalEarOffset(double offset) {
+    personalEarOffset = offset;
+    notifyListeners();
   }
 
   String t(String key) => AppLocalizations.tr(_lang, key);

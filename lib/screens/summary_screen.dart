@@ -8,7 +8,7 @@ import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/radial_safety_score_painter.dart';
 import 'home_screen.dart';
 
-/// Screen 4: SummaryScreen (Matches Figma Screen 5: Radial Score + 2x2 Grid + Save & Driving Tips)
+/// Screen 4: SummaryScreen (Automotive Safety Analytics & Driver Performance)
 class SummaryScreen extends StatefulWidget {
   const SummaryScreen({super.key});
 
@@ -130,12 +130,19 @@ class _SummaryScreenState extends State<SummaryScreen> {
         ? CockpitColors.safeGreen
         : (score >= 55 ? CockpitColors.warningAmber : CockpitColors.dangerRed);
 
+    final String badgeText = score >= 85
+        ? appState.t('badgeAlertDriver')
+        : (score >= 60
+            ? appState.t('badgeCautiousDriver')
+            : appState.t('badgeFatiguedDriver'));
+
     return Scaffold(
       appBar: const CockpitAppBar(),
       bottomNavigationBar: const CockpitBottomNavBar(currentIndex: 3),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -143,8 +150,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
                 appState.t('summaryTitle'),
                 style: const TextStyle(
                   color: CockpitColors.textWhite,
-                  fontSize: 28,
+                  fontSize: 26,
                   fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 4),
@@ -155,83 +163,83 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   fontSize: 13,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
 
-              // Drive Duration & Average EAR Badge
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: CockpitColors.safeGreen.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: CockpitColors.safeGreen.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(
-                          Icons.timer_outlined,
-                          color: CockpitColors.safeGreen,
-                          size: 15,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${_formatDuration(appState.driveDuration)} • ${appState.t('driveDuration').toUpperCase()}',
-                          style: const TextStyle(
-                            color: CockpitColors.safeGreen,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
+              // Driver Performance Badge Banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: scoreColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: scoreColor.withValues(alpha: 0.45),
                   ),
-                  if (_isSaved)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: CockpitColors.card,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: CockpitColors.cardBorder),
-                      ),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Icon(
+                      score >= 80 ? Icons.verified_user_rounded : Icons.info_outline_rounded,
+                      color: scoreColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: Text(
-                        'AVG EAR: ${appState.averageEar.toStringAsFixed(2)} • PERCLOS: ${appState.perclosPercent.toStringAsFixed(1)}%',
-                        style: const TextStyle(
-                          color: CockpitColors.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                        badgeText,
+                        style: TextStyle(
+                          color: scoreColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
                         ),
                       ),
                     ),
-                ],
+                    if (_isSaved) ...<Widget>[
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: CockpitColors.safeGreen,
+                        size: 16,
+                      ),
+                    ],
+                  ],
+                ),
               ),
               const SizedBox(height: 14),
 
-              // Animated Safety Score Card (0-100%)
+              // Animated Radial Safety Score Card (0-100%)
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: CockpitColors.card,
+                  gradient: const LinearGradient(
+                    colors: <Color>[
+                      Color(0xFF161E28),
+                      Color(0xFF121720),
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: CockpitColors.cardBorder),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: scoreColor.withValues(alpha: 0.12),
+                      blurRadius: 16,
+                      spreadRadius: 1,
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: <Widget>[
                     TweenAnimationBuilder<double>(
                       tween: Tween<double>(begin: 0, end: score / 100.0),
-                      duration: const Duration(milliseconds: 900),
+                      duration: const Duration(milliseconds: 950),
                       curve: Curves.easeOutCubic,
                       builder: (BuildContext context, double val, _) {
                         return SizedBox(
-                          width: 82,
-                          height: 82,
+                          width: 86,
+                          height: 86,
                           child: CustomPaint(
                             painter: RadialSafetyScorePainter(
                               progress: val,
@@ -242,7 +250,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                                 '${(val * 100).round()}%',
                                 style: const TextStyle(
                                   color: CockpitColors.textWhite,
-                                  fontSize: 20,
+                                  fontSize: 22,
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
@@ -251,7 +259,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                         );
                       },
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 18),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,7 +269,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                             style: const TextStyle(
                               color: CockpitColors.textMuted,
                               fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -292,79 +300,110 @@ class _SummaryScreenState extends State<SummaryScreen> {
               ),
               const SizedBox(height: 14),
 
-              // 2x2 Statistics Grid
-              Expanded(
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.42,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: <Widget>[
-                    _buildStatTile(
-                      icon: Icons.schedule_rounded,
+              // 2x2 Telemetry Grid
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _buildStatTile(
+                      icon: Icons.timer_outlined,
                       color: CockpitColors.safeGreen,
                       title: appState.t('driveDuration'),
                       value: _formatDuration(appState.driveDuration),
                     ),
-                    _buildStatTile(
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildStatTile(
                       icon: Icons.notification_important_rounded,
-                      color: CockpitColors.dangerRed,
+                      color: appState.microSleepEvents > 0
+                          ? CockpitColors.dangerRed
+                          : CockpitColors.safeGreen,
                       title: appState.t('triggersCount'),
                       value: '${appState.microSleepEvents}',
                     ),
-                    _buildStatTile(
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _buildStatTile(
                       icon: Icons.sentiment_neutral_rounded,
-                      color: CockpitColors.warningAmber,
+                      color: appState.totalYawns > 2
+                          ? CockpitColors.warningAmber
+                          : CockpitColors.safeGreen,
                       title: appState.t('yawns'),
                       value: '${appState.totalYawns}',
                     ),
-                    _buildStatTile(
-                      icon: Icons.remove_red_eye_outlined,
-                      color: scoreColor,
-                      title: appState.t('blinksLabel'),
-                      value: '${appState.totalBlinks}',
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildStatTile(
+                      icon: Icons.visibility_outlined,
+                      color: const Color(0xFF00B0FF),
+                      title: 'PERCLOS',
+                      value: '${appState.perclosPercent.toStringAsFixed(1)}%',
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 20),
 
-              // Primary "New Trip" Button & Secondary "Driving Tips" Button (Matches Figma Screen 5)
+              // Primary "New Trip" Button & Secondary "Driving Tips" Button
               SizedBox(
                 width: double.infinity,
-                height: 52,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CockpitColors.safeGreen,
-                    foregroundColor: const Color(0xFF041E0F),
-                    elevation: 6,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                height: 54,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: const LinearGradient(
+                      colors: <Color>[
+                        Color(0xFF00E676),
+                        Color(0xFF00C853),
+                      ],
                     ),
-                  ),
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    appState.resetTrip();
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const HomeScreen(),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: CockpitColors.safeGreen.withValues(alpha: 0.35),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.replay_rounded, size: 20),
-                  label: Text(
-                    appState.t('newTrip'),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
+                    ],
+                  ),
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: const Color(0xFF041E0F),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      appState.resetTrip();
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const HomeScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.replay_rounded, size: 22),
+                    label: Text(
+                      appState.t('newTrip'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
-                height: 46,
+                height: 48,
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: CockpitColors.textWhite,
@@ -388,6 +427,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -410,24 +450,25 @@ class _SummaryScreenState extends State<SummaryScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: <Widget>[
           Container(
-            padding: const EdgeInsets.all(7),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
+              color: color.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 18),
           ),
+          const SizedBox(height: 10),
           Text(
             value,
             style: const TextStyle(
               color: CockpitColors.textWhite,
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: FontWeight.w900,
             ),
           ),
+          const SizedBox(height: 2),
           Text(
             title,
             maxLines: 1,

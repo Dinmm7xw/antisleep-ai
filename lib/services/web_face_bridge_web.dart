@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:ui';
+import 'dart:ui_web' as ui_web;
 
 import 'web_face_bridge_stub.dart';
 
@@ -12,6 +13,12 @@ external JSString? get _jsLatestFaceJson;
 @JS('_antiSleepLatestGpsJson')
 external JSString? get _jsLatestGpsJson;
 
+@JS('_antiSleepClickedCoordsJson')
+external JSString? get _jsClickedCoordsJson;
+
+@JS('_antiSleepClickedCoordsJson')
+external set _jsClickedCoordsJson(JSString? value);
+
 @JS('_antiSleepStartWebGps')
 external void _jsStartWebGps();
 
@@ -21,14 +28,55 @@ external void _jsToggleWebPip();
 @JS('_antiSleepOpenUrl')
 external void _jsOpenUrl(JSString url);
 
+@JS('_antiSleepMountYandexMap')
+external void _jsMountYandexMap(
+  JSObject container,
+  JSNumber startLat,
+  JSNumber startLng,
+  JSNumber endLat,
+  JSNumber endLng,
+);
+
+@JS('_antiSleepUpdateYandexRoute')
+external void _jsUpdateYandexRoute(
+  JSString pointsJson,
+  JSNumber startLat,
+  JSNumber startLng,
+  JSNumber endLat,
+  JSNumber endLng,
+);
+
+@JS('_antiSleepMoveYandexCenter')
+external void _jsMoveYandexCenter(
+  JSNumber lat,
+  JSNumber lng,
+  JSNumber zoom,
+);
+
+@JS('document.createElement')
+external JSObject _jsCreateElement(JSString tagName);
+
 @JS('_antiSleepStartWebSiren')
 external void _jsStartWebSiren();
 
 @JS('_antiSleepStopWebSiren')
 external void _jsStopWebSiren();
 
-/// Web implementation reading MediaPipe 468-Landmark telemetry, HTML5 GPS, and Web PiP in Chrome/Edge.
+extension type _HtmlDivElement(JSObject _) implements JSObject {
+  external set id(String value);
+  external _CssStyle get style;
+}
+
+extension type _CssStyle(JSObject _) implements JSObject {
+  external set width(String value);
+  external set height(String value);
+  external set border(String value);
+}
+
+/// Web implementation reading MediaPipe 468-Landmark telemetry, HTML5 GPS, Yandex Maps 2.1 JS API, and Web PiP.
 class WebFaceBridge {
+  static final Set<String> _registeredViews = <String>{};
+
   static WebFaceFrameData? pollLatestWebFaceFrame() {
     try {
       final JSString? rawJs = _jsLatestFaceJson;
@@ -112,6 +160,80 @@ class WebFaceBridge {
         speedKmh: (map['speedKmh'] as num?)?.toDouble() ?? 0.0,
         heading: (map['heading'] as num?)?.toDouble() ?? 0.0,
         accuracy: (map['accuracy'] as num?)?.toDouble() ?? 10.0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static void registerYandexMapView(
+    String viewType,
+    double startLat,
+    double startLng,
+    double endLat,
+    double endLng,
+  ) {
+    if (_registeredViews.contains(viewType)) return;
+    _registeredViews.add(viewType);
+
+    ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
+      final _HtmlDivElement div =
+          _HtmlDivElement(_jsCreateElement('div'.toJS));
+      div.id = 'yandex-map-container-$viewId';
+      div.style.width = '100%';
+      div.style.height = '100%';
+      div.style.border = 'none';
+
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        _jsMountYandexMap(
+          div,
+          startLat.toJS,
+          startLng.toJS,
+          endLat.toJS,
+          endLng.toJS,
+        );
+      });
+
+      return div;
+    });
+  }
+
+  static void updateYandexRoute(
+    List<List<double>> points,
+    double startLat,
+    double startLng,
+    double endLat,
+    double endLng,
+  ) {
+    try {
+      final String encoded = jsonEncode(points);
+      _jsUpdateYandexRoute(
+        encoded.toJS,
+        startLat.toJS,
+        startLng.toJS,
+        endLat.toJS,
+        endLng.toJS,
+      );
+    } catch (_) {}
+  }
+
+  static void moveYandexCenter(double lat, double lng, double zoom) {
+    try {
+      _jsMoveYandexCenter(lat.toJS, lng.toJS, zoom.toJS);
+    } catch (_) {}
+  }
+
+  static Offset? pollClickedYandexCoords() {
+    try {
+      final JSString? raw = _jsClickedCoordsJson;
+      if (raw == null) return null;
+      final String s = raw.toDart;
+      if (s.isEmpty) return null;
+      _jsClickedCoordsJson = ''.toJS;
+      final Map<String, dynamic> map = jsonDecode(s) as Map<String, dynamic>;
+      return Offset(
+        (map['lat'] as num).toDouble(),
+        (map['lng'] as num).toDouble(),
       );
     } catch (_) {
       return null;

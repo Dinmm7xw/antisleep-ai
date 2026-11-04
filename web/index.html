@@ -21,6 +21,9 @@
   <!-- MediaPipe Face Mesh for Real-Time 468-Landmark Tracking when running on Flutter Web -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 
+  <!-- Official Yandex Maps JS API 2.1 (Real Yandex Map, Live Traffic Jams / Пробки, Satellite & Road Routing) -->
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU" type="text/javascript"></script>
+
   <script>
     // Global bridge state read by Dart (web_face_bridge_web.dart)
     window._antiSleepLatestFaceJson = "";
@@ -249,6 +252,113 @@
     window._antiSleepOpenUrl = function(url) {
       try {
         window.open(url, '_blank');
+      } catch (e) {}
+    };
+
+    // Real Yandex Maps 2.1 Interactive Instance + Live Traffic (Пробки) + Route Polyline Bridge
+    window._antiSleepYandexMap = null;
+    window._antiSleepYandexRouteLine = null;
+    window._antiSleepYandexStartMark = null;
+    window._antiSleepYandexEndMark = null;
+    window._antiSleepClickedCoordsJson = "";
+
+    window._antiSleepMountYandexMap = function(containerEl, startLat, startLng, endLat, endLng) {
+      if (!containerEl) return;
+      if (typeof ymaps === 'undefined') {
+        setTimeout(() => window._antiSleepMountYandexMap(containerEl, startLat, startLng, endLat, endLng), 400);
+        return;
+      }
+      ymaps.ready(() => {
+        try {
+          containerEl.innerHTML = "";
+          const map = new ymaps.Map(containerEl, {
+            center: [startLat, startLng],
+            zoom: 13,
+            controls: ['trafficControl', 'typeSelector', 'zoomControl', 'geolocationControl']
+          }, {
+            suppressMapOpenBlock: true
+          });
+
+          // Enable Yandex Live Traffic Jams (Пробки) automatically
+          const trafficControl = map.controls.get('trafficControl');
+          if (trafficControl) {
+            trafficControl.showTraffic();
+          }
+
+          window._antiSleepYandexMap = map;
+
+          // Listen for clicks on the Yandex Map to set new destination
+          map.events.add('click', (e) => {
+            const coords = e.get('coords');
+            if (coords && coords.length >= 2) {
+              window._antiSleepClickedCoordsJson = JSON.stringify({
+                lat: coords[0],
+                lng: coords[1],
+                ts: Date.now()
+              });
+            }
+          });
+
+          window._antiSleepUpdateYandexRoute(
+            JSON.stringify([[startLat, startLng], [endLat, endLng]]),
+            startLat, startLng, endLat, endLng
+          );
+        } catch (err) {
+          console.error("Yandex Map init error:", err);
+        }
+      });
+    };
+
+    window._antiSleepUpdateYandexRoute = function(pointsJson, startLat, startLng, endLat, endLng) {
+      try {
+        const map = window._antiSleepYandexMap;
+        if (!map || typeof ymaps === 'undefined') return;
+        const pts = JSON.parse(pointsJson);
+
+        if (window._antiSleepYandexRouteLine) {
+          map.geoObjects.remove(window._antiSleepYandexRouteLine);
+        }
+        if (window._antiSleepYandexStartMark) {
+          map.geoObjects.remove(window._antiSleepYandexStartMark);
+        }
+        if (window._antiSleepYandexEndMark) {
+          map.geoObjects.remove(window._antiSleepYandexEndMark);
+        }
+
+        window._antiSleepYandexRouteLine = new ymaps.Polyline(pts, {
+          balloonContent: "Маршрут AntiSleep AI"
+        }, {
+          strokeColor: "#00E676",
+          strokeWidth: 6,
+          strokeOpacity: 0.92,
+          outline: true,
+          outlineColor: "#062E1A",
+          outlineWidth: 2
+        });
+
+        window._antiSleepYandexStartMark = new ymaps.Placemark([startLat, startLng], {
+          iconCaption: "Вы здесь (GPS)"
+        }, {
+          preset: "islands#greenAutoIcon"
+        });
+
+        window._antiSleepYandexEndMark = new ymaps.Placemark([endLat, endLng], {
+          iconCaption: "Финиш"
+        }, {
+          preset: "islands#redGovernmentCircleIcon"
+        });
+
+        map.geoObjects.add(window._antiSleepYandexRouteLine);
+        map.geoObjects.add(window._antiSleepYandexStartMark);
+        map.geoObjects.add(window._antiSleepYandexEndMark);
+      } catch (e) {}
+    };
+
+    window._antiSleepMoveYandexCenter = function(lat, lng, zoom) {
+      try {
+        if (window._antiSleepYandexMap) {
+          window._antiSleepYandexMap.setCenter([lat, lng], zoom || 14, { duration: 300 });
+        }
       } catch (e) {}
     };
 

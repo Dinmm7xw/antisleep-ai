@@ -51,6 +51,22 @@ class WebFaceBridge {
   static void startWebGps() {}
   static void toggleWebPictureInPicture() {}
   static void openExternalUrl(String url) {}
+  static void registerYandexMapView(
+    String viewType,
+    double startLat,
+    double startLng,
+    double endLat,
+    double endLng,
+  ) {}
+  static void updateYandexRoute(
+    List<List<double>> points,
+    double startLat,
+    double startLng,
+    double endLat,
+    double endLng,
+  ) {}
+  static void moveYandexCenter(double lat, double lng, double zoom) {}
+  static Offset? pollClickedYandexCoords() => null;
   static void startWebSiren() {}
   static void stopWebSiren() {}
 }

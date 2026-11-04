@@ -12,8 +12,7 @@ import '../services/web_face_bridge.dart';
 import '../state/app_session_state.dart';
 import '../widgets/painters/sound_wave_bars_painter.dart';
 
-/// Screen 3: DangerAlertScreen (Full-screen Emergency Strobe Overlay)
-/// Triggers continuous AudioPlayer / WebAudio siren + continuous heavy flutter_vibrate
+/// Screen 3: DangerAlertScreen (Full-screen Emergency Strobe Overlay + Slide to Dismiss)
 class DangerAlertScreen extends StatefulWidget {
   const DangerAlertScreen({super.key});
 
@@ -28,12 +27,15 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
   Timer? _vibrationTimer;
   bool _canVibrateDevice = false;
 
+  // Slide to Dismiss State
+  double _sliderProgress = 0.0;
+
   @override
   void initState() {
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 550),
+      duration: const Duration(milliseconds: 480),
     )..repeat(reverse: true);
 
     _startEmergencySirenAndVibration();
@@ -61,7 +63,7 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
 
     _triggerVibrationPulse();
     _vibrationTimer = Timer.periodic(
-      const Duration(milliseconds: 700),
+      const Duration(milliseconds: 600),
       (_) => _triggerVibrationPulse(),
     );
   }
@@ -106,8 +108,8 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
         animation: _pulseController,
         builder: (BuildContext context, _) {
           final Color bgColor = Color.lerp(
-            CockpitColors.dangerRed,
-            const Color(0xFFB00020),
+            const Color(0xFFFF0D36),
+            const Color(0xFF7A0014),
             _pulseController.value,
           )!;
 
@@ -120,26 +122,42 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.white,
-                          size: 18,
+                    // Top Warning Strip
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.6),
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          appState.t('criticalFatigue'),
-                          style: const TextStyle(
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Icon(
+                            Icons.warning_amber_rounded,
                             color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.4,
+                            size: 18,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Text(
+                            appState.t('criticalFatigue'),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+
+                    // Center Emergency Siren Pulsation & Text
                     Column(
                       children: <Widget>[
                         SizedBox(
@@ -149,53 +167,63 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
                             alignment: Alignment.center,
                             children: <Widget>[
                               Transform.scale(
-                                scale: 1.0 + (_pulseController.value * 0.28),
+                                scale: 1.0 + (_pulseController.value * 0.35),
                                 child: Container(
-                                  width: 120,
-                                  height: 120,
+                                  width: 130,
+                                  height: 130,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                       color: Colors.white.withValues(
-                                        alpha: 1.0 - _pulseController.value * 0.7,
+                                        alpha:
+                                            1.0 - _pulseController.value * 0.7,
                                       ),
-                                      width: 2,
+                                      width: 3,
                                     ),
                                   ),
                                 ),
                               ),
                               Container(
-                                width: 88,
-                                height: 88,
+                                width: 92,
+                                height: 92,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.18),
+                                  color: Colors.white.withValues(alpha: 0.22),
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: Colors.white,
-                                    width: 2,
+                                    width: 2.5,
                                   ),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.4 * _pulseController.value,
+                                      ),
+                                      blurRadius: 20,
+                                      spreadRadius: 4,
+                                    ),
+                                  ],
                                 ),
                                 child: const Icon(
                                   Icons.notifications_active_rounded,
                                   color: Colors.white,
-                                  size: 46,
+                                  size: 48,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 22),
                         Text(
                           appState.t('dangerTitle'),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 34,
+                            fontSize: 36,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: 0.8,
+                            letterSpacing: 1.0,
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Text(
                           appState.t('dangerSub'),
                           textAlign: TextAlign.center,
@@ -206,54 +234,125 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
                             height: 1.35,
                           ),
                         ),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 24),
                         SizedBox(
-                          width: 220,
-                          height: 54,
+                          width: 240,
+                          height: 52,
                           child: CustomPaint(
                             painter: SoundWaveBarsPainter(
                               phase: _pulseController.value,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Text(
                           appState.t('alarmMaxVol'),
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
                             letterSpacing: 1.2,
                           ),
                         ),
                       ],
                     ),
+
+                    // Bottom: Slide To Dismiss Track (Requires deliberate driver action)
                     Column(
                       children: <Widget>[
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: CockpitColors.dangerRed,
-                              elevation: 10,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                        LayoutBuilder(
+                          builder:
+                              (BuildContext context, BoxConstraints constraints) {
+                            final double trackWidth = constraints.maxWidth;
+                            const double thumbSize = 54;
+                            final double maxDrag = trackWidth - thumbSize - 8;
+
+                            return Container(
+                              height: 62,
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(32),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  width: 2,
+                                ),
                               ),
-                            ),
-                            onPressed: _dismissAlarm,
-                            child: Text(
-                              appState.t('dismissAlarm'),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.0,
+                              child: Stack(
+                                alignment: Alignment.centerLeft,
+                                children: <Widget>[
+                                  Center(
+                                    child: Text(
+                                      appState.t('swipeToDismiss'),
+                                      style: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.85),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    left: _sliderProgress * maxDrag,
+                                    child: GestureDetector(
+                                      onHorizontalDragUpdate:
+                                          (DragUpdateDetails details) {
+                                        setState(() {
+                                          final double next = _sliderProgress +
+                                              (details.primaryDelta ?? 0) /
+                                                  maxDrag;
+                                          _sliderProgress = next.clamp(0.0, 1.0);
+                                        });
+                                      },
+                                      onHorizontalDragEnd: (_) {
+                                        if (_sliderProgress >= 0.82) {
+                                          HapticFeedback.heavyImpact();
+                                          _dismissAlarm();
+                                        } else {
+                                          setState(() => _sliderProgress = 0.0);
+                                        }
+                                      },
+                                      child: Container(
+                                        width: thumbSize,
+                                        height: thumbSize,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                          boxShadow: <BoxShadow>[
+                                            BoxShadow(
+                                              color: Colors.black38,
+                                              blurRadius: 8,
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: CockpitColors.dangerRed,
+                                          size: 28,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        // Quick fallback button
+                        TextButton(
+                          onPressed: _dismissAlarm,
+                          child: Text(
+                            appState.t('dismissAlarm'),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.underline,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 10),
                         Text(
                           appState.t('restAdvice'),
                           textAlign: TextAlign.center,
@@ -274,4 +373,3 @@ class _DangerAlertScreenState extends State<DangerAlertScreen>
     );
   }
 }
-

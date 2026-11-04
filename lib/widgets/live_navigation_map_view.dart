@@ -85,9 +85,32 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      WebFaceBridge.registerYandexMapView(
+        'antisleep-yandex-map',
+        _currentLocation.latitude,
+        _currentLocation.longitude,
+        _destination.latitude,
+        _destination.longitude,
+      );
+    }
     _traveledTrail.add(_currentLocation);
     _fetchRealRoadRoute(_currentLocation, _destination);
     _startGpsTracking();
+  }
+
+  void _syncRouteToRealYandexMap() {
+    if (!kIsWeb) return;
+    final List<List<double>> pts = _routeWaypoints
+        .map((LatLng p) => <double>[p.latitude, p.longitude])
+        .toList();
+    WebFaceBridge.updateYandexRoute(
+      pts,
+      _currentLocation.latitude,
+      _currentLocation.longitude,
+      _destination.latitude,
+      _destination.longitude,
+    );
   }
 
   /// Queries OSRM real road routing engine for exact street geometry, distance, ETA, and turn-by-turn street names.
@@ -180,6 +203,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
               _nextManeuverIcon = turnIcon;
               _isCalculatingRoute = false;
             });
+            _syncRouteToRealYandexMap();
             return;
           }
         }
@@ -210,6 +234,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
       _routeEtaMinutes = math.max(1, (fallbackDist / 750.0).round());
       _isCalculatingRoute = false;
     });
+    _syncRouteToRealYandexMap();
   }
 
   /// Geocodes a user-entered address query via OpenStreetMap Nominatim and builds the road route.
@@ -247,7 +272,11 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
             _destination = target;
             _destinationLabel = displayName;
           });
-          _mapController.move(target, 13.5);
+          if (kIsWeb && _mapStyleIndex == 0) {
+            WebFaceBridge.moveYandexCenter(target.latitude, target.longitude, 13);
+          } else {
+            _mapController.move(target, 13.5);
+          }
           await _fetchRealRoadRoute(_currentLocation, target);
           return;
         }
@@ -295,6 +324,20 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
 
     _gpsPollTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!mounted) return;
+
+      // 0. Check if user clicked on the real Yandex Map (ymaps.Map) to set destination
+      if (kIsWeb) {
+        final Offset? clicked = WebFaceBridge.pollClickedYandexCoords();
+        if (clicked != null) {
+          final LatLng tappedLatLng = LatLng(clicked.dx, clicked.dy);
+          setState(() {
+            _destination = tappedLatLng;
+            _destinationLabel =
+                '${tappedLatLng.latitude.toStringAsFixed(4)}, ${tappedLatLng.longitude.toStringAsFixed(4)}';
+          });
+          await _fetchRealRoadRoute(_currentLocation, tappedLatLng);
+        }
+      }
 
       // 1. Poll real browser GPS on Web
       if (kIsWeb) {
@@ -387,20 +430,18 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   }
 
   String get _activeTileUrl {
-    if (_mapStyleIndex == 0) {
-      // Real Yandex Maps Dark Automotive Theme (lang=ru_RU)
-      return 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=2&lang=ru_RU&theme=dark';
-    } else if (_mapStyleIndex == 1) {
-      // Real Yandex Maps Day Street Scheme (lang=ru_RU)
-      return 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=2&lang=ru_RU';
+    if (_mapStyleIndex == 1) {
+      // Dark Cockpit Navigation Map
+      return 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+    } else if (_mapStyleIndex == 2) {
+      return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     }
-    // Fallback 2: OpenStreetMap Standard
-    return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    return 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
   }
 
   String get _activeMapStyleLabel {
-    if (_mapStyleIndex == 0) return 'Яндекс Ночь';
-    if (_mapStyleIndex == 1) return 'Яндекс День';
+    if (_mapStyleIndex == 0) return 'Яндекс.Карта 2.1';
+    if (_mapStyleIndex == 1) return 'Кокпит Ночь';
     return 'OSM Схема';
   }
 
@@ -411,8 +452,11 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         return Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            // 1. Interactive FlutterMap with Real Road Polylines & Markers
-            FlutterMap(
+            // 1. Official Real Yandex Map 2.1 (with Live Traffic / Пробки) on Web OR FlutterMap
+            if (kIsWeb && _mapStyleIndex == 0)
+              const HtmlElementView(viewType: 'antisleep-yandex-map')
+            else
+              FlutterMap(
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: _currentLocation,
@@ -725,7 +769,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                                         _destinationLabel = place.title;
                                         _showSearchBar = false;
                                       });
-                                      _mapController.move(place.coords, 13.0);
+                                      if (kIsWeb && _mapStyleIndex == 0) {
+                                        WebFaceBridge.moveYandexCenter(
+                                          place.coords.latitude,
+                                          place.coords.longitude,
+                                          13,
+                                        );
+                                      } else {
+                                        _mapController.move(place.coords, 13.0);
+                                      }
                                       _fetchRealRoadRoute(
                                         _currentLocation,
                                         place.coords,
@@ -754,7 +806,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     icon: Icons.add_rounded,
                     onTap: () {
                       _zoom = (_zoom + 1.0).clamp(3.0, 18.5);
-                      _mapController.move(_mapController.camera.center, _zoom);
+                      if (kIsWeb && _mapStyleIndex == 0) {
+                        WebFaceBridge.moveYandexCenter(
+                          _currentLocation.latitude,
+                          _currentLocation.longitude,
+                          _zoom,
+                        );
+                      } else {
+                        _mapController.move(_mapController.camera.center, _zoom);
+                      }
                     },
                   ),
                   const SizedBox(height: 6),
@@ -762,7 +822,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     icon: Icons.remove_rounded,
                     onTap: () {
                       _zoom = (_zoom - 1.0).clamp(3.0, 18.5);
-                      _mapController.move(_mapController.camera.center, _zoom);
+                      if (kIsWeb && _mapStyleIndex == 0) {
+                        WebFaceBridge.moveYandexCenter(
+                          _currentLocation.latitude,
+                          _currentLocation.longitude,
+                          _zoom,
+                        );
+                      } else {
+                        _mapController.move(_mapController.camera.center, _zoom);
+                      }
                     },
                   ),
                   const SizedBox(height: 6),
@@ -770,7 +838,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     icon: Icons.my_location_rounded,
                     color: CockpitColors.safeGreen,
                     onTap: () {
-                      _mapController.move(_currentLocation, _zoom);
+                      if (kIsWeb && _mapStyleIndex == 0) {
+                        WebFaceBridge.moveYandexCenter(
+                          _currentLocation.latitude,
+                          _currentLocation.longitude,
+                          _zoom,
+                        );
+                      } else {
+                        _mapController.move(_currentLocation, _zoom);
+                      }
                     },
                   ),
                   const SizedBox(height: 6),
