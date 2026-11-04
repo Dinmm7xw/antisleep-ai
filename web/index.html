@@ -204,6 +204,30 @@
       setupFaceMesh();
     })();
 
+    window._antiSleepSaveGpsPos = function(lat, lng, speedMps, headingDeg, acc) {
+      window._antiSleepLatestGpsJson = JSON.stringify({
+        lat: lat,
+        lng: lng,
+        speedKmh: (speedMps && speedMps > 0) ? (speedMps * 3.6) : 0.0,
+        heading: (headingDeg && !isNaN(headingDeg)) ? headingDeg : 0.0,
+        accuracy: acc || 10.0,
+        ts: Date.now()
+      });
+    };
+
+    window._antiSleepFallbackIpGps = async function() {
+      if (window._antiSleepLatestGpsJson) return;
+      try {
+        const res = await fetch("https://ipwho.is/");
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.latitude && data.longitude) {
+            window._antiSleepSaveGpsPos(data.latitude, data.longitude, 0.0, 0.0, 50.0);
+          }
+        }
+      } catch (e) {}
+    };
+
     // Real HTML5 GPS Geolocation Watcher for Live Map Navigation
     window._antiSleepStartWebGps = function() {
       try {
@@ -215,20 +239,27 @@
             window._antiSleepWakeLock = lock;
           }).catch(() => {});
         }
-        if (!("geolocation" in navigator)) return;
-        navigator.geolocation.watchPosition(
+        if (!("geolocation" in navigator)) {
+          window._antiSleepFallbackIpGps();
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
           (pos) => {
             const c = pos.coords;
-            window._antiSleepLatestGpsJson = JSON.stringify({
-              lat: c.latitude,
-              lng: c.longitude,
-              speedKmh: (c.speed && c.speed > 0) ? (c.speed * 3.6) : 0.0,
-              heading: (c.heading && !isNaN(c.heading)) ? c.heading : 0.0,
-              accuracy: c.accuracy || 10.0,
-              ts: Date.now()
-            });
+            window._antiSleepSaveGpsPos(c.latitude, c.longitude, c.speed, c.heading, c.accuracy);
           },
-          (err) => {},
+          () => { window._antiSleepFallbackIpGps(); },
+          { enableHighAccuracy: true, maximumAge: 10000, timeout: 6000 }
+        );
+        if (window._antiSleepGpsWatchId) {
+          try { navigator.geolocation.clearWatch(window._antiSleepGpsWatchId); } catch (e) {}
+        }
+        window._antiSleepGpsWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const c = pos.coords;
+            window._antiSleepSaveGpsPos(c.latitude, c.longitude, c.speed, c.heading, c.accuracy);
+          },
+          () => { window._antiSleepFallbackIpGps(); },
           { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
         );
       } catch (e) {}
