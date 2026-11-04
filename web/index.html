@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="AntiSleep AI — Driver Safety & Drowsiness Detection">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>AntiSleep AI</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- MediaPipe Face Mesh for Real-Time 468-Landmark Tracking when running on Flutter Web -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+  <script>
+    // Global bridge state read by Dart (web_face_bridge_web.dart)
+    window._antiSleepLatestFaceJson = "";
+    window._antiSleepWebAudioCtx = null;
+    window._antiSleepWebSirenOsc = null;
+    window._antiSleepWebSirenTimer = null;
+
+    (function initWebFaceMeshBridge() {
+      const LEFT_EYE = [33, 160, 158, 133, 153, 144];
+      const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
+      const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+      const LIPS_CONTOUR = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+
+      let faceMesh = null;
+      let isBusy = false;
+
+      function dist(a, b) {
+        return Math.hypot(a.x - b.x, a.y - b.y);
+      }
+
+      function computeEyeEAR(landmarks, idx) {
+        const p1 = landmarks[idx[0]], p2 = landmarks[idx[1]], p3 = landmarks[idx[2]];
+        const p4 = landmarks[idx[3]], p5 = landmarks[idx[4]], p6 = landmarks[idx[5]];
+        const h = dist(p1, p4);
+        if (h === 0) return 0.30;
+        return (dist(p2, p6) + dist(p3, p5)) / (2.0 * h);
+      }
+
+      function computeMAR(landmarks) {
+        const top = landmarks[13], bottom = landmarks[14];
+        const left = landmarks[78], right = landmarks[308];
+        const h = dist(left, right);
+        if (h === 0) return 0.14;
+        return dist(top, bottom) / h;
+      }
+
+      function findActiveVideoElement() {
+        const directVideos = document.querySelectorAll('video');
+        for (const v of directVideos) {
+          if (v.readyState >= 2 && v.videoWidth > 0) return v;
+        }
+        // Check inside shadow roots created by Flutter platform views
+        const allNodes = document.querySelectorAll('*');
+        for (const node of allNodes) {
+          if (node.shadowRoot) {
+            const shadowVideos = node.shadowRoot.querySelectorAll('video');
+            for (const v of shadowVideos) {
+              if (v.readyState >= 2 && v.videoWidth > 0) return v;
+            }
+          }
+        }
+        return null;
+      }
+
+      function setupFaceMesh() {
+        if (typeof FaceMesh === 'undefined') {
+          setTimeout(setupFaceMesh, 500);
+          return;
+        }
+        faceMesh = new FaceMesh({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults((results) => {
+          if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+            window._antiSleepLatestFaceJson = JSON.stringify({ faceFound: false, ts: Date.now() });
+            return;
+          }
+
+          const lm = results.multiFaceLandmarks[0];
+          const leftEar = computeEyeEAR(lm, LEFT_EYE);
+          const rightEar = computeEyeEAR(lm, RIGHT_EYE);
+          const ear = (leftEar + rightEar) / 2.0;
+          const mar = computeMAR(lm);
+
+          // Approximate Head Pitch & Yaw in degrees from nose tip (1), eyes mid, chin (152)
+          const nose = lm[1];
+          const leftEyeOuter = lm[33];
+          const rightEyeOuter = lm[263];
+          const forehead = lm[10];
+          const chin = lm[152];
+
+          const eyeMidX = (leftEyeOuter.x + rightEyeOuter.x) / 2.0;
+          const faceWidth = Math.max(0.05, Math.abs(rightEyeOuter.x - leftEyeOuter.x));
+          const yaw = ((nose.x - eyeMidX) / faceWidth) * 65.0;
+
+          const faceMidY = (forehead.y + chin.y) / 2.0;
+          const faceHeight = Math.max(0.05, Math.abs(chin.y - forehead.y));
+          const pitch = ((faceMidY - nose.y) / faceHeight) * 90.0;
+
+          let minX = 1, minY = 1, maxX = 0, maxY = 0;
+          for (let i = 0; i < lm.length; i += 3) {
+            const p = lm[i];
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+          }
+
+          const mapPts = (indices) => indices.map(i => [
+            Math.round(lm[i].x * 1000) / 1000,
+            Math.round(lm[i].y * 1000) / 1000
+          ]);
+
+          window._antiSleepLatestFaceJson = JSON.stringify({
+            faceFound: true,
+            ts: Date.now(),
+            ear: Math.round(ear * 1000) / 1000,
+            mar: Math.round(mar * 1000) / 1000,
+            pitch: Math.round(pitch * 10) / 10,
+            yaw: Math.round(yaw * 10) / 10,
+            bbox: [minX, minY, maxX, maxY],
+            leftEye: mapPts(LEFT_EYE),
+            rightEye: mapPts(RIGHT_EYE),
+            lips: mapPts(LIPS_CONTOUR),
+            oval: mapPts(FACE_OVAL)
+          });
+        });
+
+        requestAnimationFrame(tickVideoFrame);
+      }
+
+      async function tickVideoFrame() {
+        const video = findActiveVideoElement();
+        if (video && faceMesh && !isBusy) {
+          isBusy = true;
+          try {
+            await faceMesh.send({ image: video });
+          } catch (e) {}
+          isBusy = false;
+        }
+        requestAnimationFrame(tickVideoFrame);
+      }
+
+      setupFaceMesh();
+    })();
+
+    // Web Audio API Dual-Tone 880Hz/440Hz Siren for reliable sound in Chrome/Edge
+    window._antiSleepStartWebSiren = function() {
+      try {
+        window._antiSleepStopWebSiren();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!window._antiSleepWebAudioCtx) {
+          window._antiSleepWebAudioCtx = new AudioCtx();
+        }
+        const ctx = window._antiSleepWebAudioCtx;
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.9, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        window._antiSleepWebSirenOsc = osc;
+
+        let high = true;
+        window._antiSleepWebSirenTimer = setInterval(() => {
+          if (!window._antiSleepWebSirenOsc) return;
+          high = !high;
+          window._antiSleepWebSirenOsc.frequency.setValueAtTime(high ? 880 : 440, ctx.currentTime);
+        }, 280);
+      } catch (e) {}
+    };
+
+    window._antiSleepStopWebSiren = function() {
+      try {
+        if (window._antiSleepWebSirenTimer) {
+          clearInterval(window._antiSleepWebSirenTimer);
+          window._antiSleepWebSirenTimer = null;
+        }
+        if (window._antiSleepWebSirenOsc) {
+          window._antiSleepWebSirenOsc.stop();
+          window._antiSleepWebSirenOsc.disconnect();
+          window._antiSleepWebSirenOsc = null;
+        }
+      } catch (e) {}
+    };
+  </script>
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
