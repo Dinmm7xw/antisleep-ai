@@ -21,8 +21,9 @@
   <!-- MediaPipe Face Mesh for Real-Time 468-Landmark Tracking when running on Flutter Web -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 
-  <!-- Official Yandex Maps JS API 2.1 (Real Yandex Map, Live Traffic Jams / Пробки, Satellite & Road Routing) -->
-  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU" type="text/javascript"></script>
+  <!-- Official 2GIS MapGL 3D WebGL API + 2GIS Directions Plugin (API Key: 01a1951a-28ee-4a07-9e99-40ba82333bb0) -->
+  <script src="https://mapgl.2gis.com/api/js/v1"></script>
+  <script src="https://unpkg.com/@2gis/mapgl-directions@^2/dist/directions.js"></script>
 
   <script>
     // Global bridge state read by Dart (web_face_bridge_web.dart)
@@ -268,124 +269,173 @@
       } catch (e) {}
     };
 
-    // Real Yandex Maps 2.1 Interactive Instance + Live Traffic (Пробки) + Route Polyline Bridge
-    window._antiSleepYandexMap = null;
-    window._antiSleepYandexRouteLine = null;
-    window._antiSleepYandexStartMark = null;
-    window._antiSleepYandexEndMark = null;
+    // Official 2GIS MapGL 3D WebGL Interactive Instance + 2GIS Directions API (Key: 01a1951a-28ee-4a07-9e99-40ba82333bb0)
+    window._antiSleep2GisKey = "01a1951a-28ee-4a07-9e99-40ba82333bb0";
+    window._antiSleep2GisMap = null;
+    window._antiSleep2GisDirections = null;
+    window._antiSleep2GisGreenLine = null;
+    window._antiSleep2GisYellowLine = null;
+    window._antiSleep2GisCarMarker = null;
+    window._antiSleep2GisDestMarker = null;
     window._antiSleepClickedCoordsJson = "";
 
     window._antiSleepCreateYandexMapDiv = function(viewId, startLat, startLng, endLat, endLng) {
       const div = document.createElement('div');
-      div.id = 'yandex-map-container-' + viewId;
+      div.id = 'dgis-map-container-' + viewId;
       div.style.width = '100%';
       div.style.height = '100%';
       div.style.border = 'none';
       setTimeout(() => {
-        window._antiSleepMountYandexMap(div, startLat, startLng, endLat, endLng);
-      }, 120);
+        window._antiSleepMount2GisMap(div, startLat, startLng, endLat, endLng);
+      }, 100);
       return div;
     };
 
-    window._antiSleepMountYandexMap = function(containerEl, startLat, startLng, endLat, endLng) {
+    window._antiSleepMount2GisMap = function(containerEl, startLat, startLng, endLat, endLng) {
       if (!containerEl) return;
-      if (typeof ymaps === 'undefined') {
-        setTimeout(() => window._antiSleepMountYandexMap(containerEl, startLat, startLng, endLat, endLng), 400);
+      if (typeof mapgl === 'undefined') {
+        setTimeout(() => window._antiSleepMount2GisMap(containerEl, startLat, startLng, endLat, endLng), 300);
         return;
       }
-      ymaps.ready(() => {
-        try {
-          containerEl.innerHTML = "";
-          const map = new ymaps.Map(containerEl, {
-            center: [startLat, startLng],
-            zoom: 13,
-            controls: []
-          }, {
-            suppressMapOpenBlock: true
-          });
-
-          // Enable Yandex Live Traffic Jams (Пробки) cleanly without bulky white UI buttons
-          try {
-            const actualProvider = new ymaps.traffic.Provider.Actual({}, { infoLayerShown: true });
-            actualProvider.setMap(map);
-          } catch (e) {}
-
-          window._antiSleepYandexMap = map;
-
-          // Listen for clicks on the Yandex Map to set new destination
-          map.events.add('click', (e) => {
-            const coords = e.get('coords');
-            if (coords && coords.length >= 2) {
-              window._antiSleepClickedCoordsJson = JSON.stringify({
-                lat: coords[0],
-                lng: coords[1],
-                ts: Date.now()
-              });
-            }
-          });
-
-          window._antiSleepUpdateYandexRoute(
-            JSON.stringify([[startLat, startLng], [endLat, endLng]]),
-            startLat, startLng, endLat, endLng
-          );
-        } catch (err) {
-          console.error("Yandex Map init error:", err);
+      try {
+        if (window._antiSleep2GisMap) {
+          try { window._antiSleep2GisMap.destroy(); } catch (e) {}
         }
-      });
+        containerEl.innerHTML = "";
+        const map = new mapgl.Map(containerEl, {
+          center: [startLng, startLat],
+          zoom: 17.2,
+          pitch: 48,
+          rotation: -28,
+          key: window._antiSleep2GisKey,
+          zoomControl: false
+        });
+
+        window._antiSleep2GisMap = map;
+
+        if (typeof mapgl.Directions !== 'undefined') {
+          try {
+            window._antiSleep2GisDirections = new mapgl.Directions(map, {
+              directionsApiKey: window._antiSleep2GisKey
+            });
+            window._antiSleep2GisDirections.carRoute({
+              points: [
+                [startLng, startLat],
+                [endLng, endLat]
+              ]
+            });
+          } catch (e) {}
+        }
+
+        // Listen for clicks on the 3D 2GIS Map to set Point A or Point B
+        map.on('click', (e) => {
+          if (e && e.lngLat && e.lngLat.length >= 2) {
+            window._antiSleepClickedCoordsJson = JSON.stringify({
+              lat: e.lngLat[1],
+              lng: e.lngLat[0],
+              ts: Date.now()
+            });
+          }
+        });
+
+        // Create 2GIS 3D Blue Navigation Wedge + Circular Driver Avatar Marker
+        window._antiSleep2GisCarMarker = new mapgl.HtmlMarker(map, {
+          coordinates: [startLng, startLat],
+          html: `<div style="position:relative;width:82px;height:68px;pointer-events:none;transform:translate(-41px,-34px);">
+            <div style="position:absolute;right:6px;bottom:6px;width:40px;height:40px;border-radius:50%;background:#1E5EFF;border:3px solid #fff;box-shadow:0 4px 10px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+            </div>
+            <div style="position:absolute;left:4px;top:4px;width:46px;height:46px;border-radius:50%;background:linear-gradient(180deg,#3A506B,#0B132B);border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
+              <span style="color:#00E676;font-weight:900;font-size:13px;font-family:sans-serif;">AI</span>
+              <div style="position:absolute;right:-4px;bottom:-2px;background:#494F56;color:#fff;font-size:9px;font-weight:900;padding:1px 5px;border-radius:10px;border:1.5px solid #fff;font-family:sans-serif;">3</div>
+            </div>
+          </div>`
+        });
+      } catch (err) {
+        console.error("2GIS MapGL init error:", err);
+      }
     };
 
     window._antiSleepUpdateYandexRoute = function(pointsJson, startLat, startLng, endLat, endLng) {
       try {
-        const map = window._antiSleepYandexMap;
-        if (!map || typeof ymaps === 'undefined') return;
-        const pts = JSON.parse(pointsJson);
+        const map = window._antiSleep2GisMap;
+        if (!map || typeof mapgl === 'undefined') return;
+        const ptsLatLng = JSON.parse(pointsJson);
+        // Convert [lat, lng] -> [lng, lat] for 2GIS MapGL
+        const coordsLngLat = ptsLatLng.map(p => [p[1], p[0]]);
 
-        if (window._antiSleepYandexRouteLine) {
-          map.geoObjects.remove(window._antiSleepYandexRouteLine);
+        if (window._antiSleep2GisGreenLine) {
+          try { window._antiSleep2GisGreenLine.destroy(); } catch (e) {}
         }
-        if (window._antiSleepYandexStartMark) {
-          map.geoObjects.remove(window._antiSleepYandexStartMark);
+        if (window._antiSleep2GisYellowLine) {
+          try { window._antiSleep2GisYellowLine.destroy(); } catch (e) {}
         }
-        if (window._antiSleepYandexEndMark) {
-          map.geoObjects.remove(window._antiSleepYandexEndMark);
+        if (window._antiSleep2GisDestMarker) {
+          try { window._antiSleep2GisDestMarker.destroy(); } catch (e) {}
         }
 
-        window._antiSleepYandexRouteLine = new ymaps.Polyline(pts, {
-          balloonContent: "Маршрут AntiSleep AI"
-        }, {
-          strokeColor: "#00E676",
-          strokeWidth: 6,
-          strokeOpacity: 0.92,
-          outline: true,
-          outlineColor: "#062E1A",
-          outlineWidth: 2
+        if (coordsLngLat.length > 1) {
+          window._antiSleep2GisGreenLine = new mapgl.Polyline(map, {
+            coordinates: coordsLngLat,
+            width: 13,
+            color: "#19AA1E",
+            borderColor: "#0C5E10",
+            borderWidth: 2
+          });
+          window._antiSleep2GisYellowLine = new mapgl.Polyline(map, {
+            coordinates: coordsLngLat,
+            width: 6,
+            color: "#FFD600"
+          });
+        }
+
+        window._antiSleep2GisDestMarker = new mapgl.HtmlMarker(map, {
+          coordinates: [endLng, endLat],
+          html: `<div style="width:36px;height:36px;border-radius:50%;background:#19AA1E;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.4);color:#fff;font-weight:900;font-size:15px;font-family:sans-serif;display:flex;align-items:center;justify-content:center;transform:translate(-18px,-18px);">Б</div>`
         });
 
-        window._antiSleepYandexStartMark = new ymaps.Placemark([startLat, startLng], {
-          iconContent: "А",
-          iconCaption: "Старт (А)"
-        }, {
-          preset: "islands#greenStretchyIcon"
-        });
-
-        window._antiSleepYandexEndMark = new ymaps.Placemark([endLat, endLng], {
-          iconContent: "Б",
-          iconCaption: "Финиш (Б)"
-        }, {
-          preset: "islands#redStretchyIcon"
-        });
-
-        map.geoObjects.add(window._antiSleepYandexRouteLine);
-        map.geoObjects.add(window._antiSleepYandexStartMark);
-        map.geoObjects.add(window._antiSleepYandexEndMark);
+        if (window._antiSleep2GisDirections) {
+          try {
+            window._antiSleep2GisDirections.carRoute({
+              points: [
+                [startLng, startLat],
+                [endLng, endLat]
+              ]
+            });
+          } catch (e) {}
+        }
       } catch (e) {}
     };
 
     window._antiSleepMoveYandexCenter = function(lat, lng, zoom) {
       try {
-        if (window._antiSleepYandexMap) {
-          window._antiSleepYandexMap.setCenter([lat, lng], zoom || 14, { duration: 300 });
+        const map = window._antiSleep2GisMap;
+        if (!map) return;
+        if (window._antiSleep2GisCarMarker) {
+          window._antiSleep2GisCarMarker.setCoordinates([lng, lat]);
         }
+        // Negative zoom encodes heading when called from smooth 3D navigator loop:
+        // Or standard zoom (3..20)
+        if (zoom && zoom > 0 && zoom <= 21) {
+          map.setCenter([lng, lat]);
+          map.setZoom(zoom);
+        } else {
+          map.setCenter([lng, lat]);
+        }
+      } catch (e) {}
+    };
+
+    window._antiSleepUpdate2GisCamera3D = function(lat, lng, zoom, headingDeg, pitchDeg) {
+      try {
+        const map = window._antiSleep2GisMap;
+        if (!map) return;
+        if (window._antiSleep2GisCarMarker) {
+          window._antiSleep2GisCarMarker.setCoordinates([lng, lat]);
+        }
+        map.setCenter([lng, lat]);
+        if (zoom > 0) map.setZoom(zoom);
+        map.setRotation(-headingDeg);
+        map.setPitch(pitchDeg);
       } catch (e) {}
     };
 

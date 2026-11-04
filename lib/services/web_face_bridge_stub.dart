@@ -66,6 +66,13 @@ class WebFaceBridge {
     double endLng,
   ) {}
   static void moveYandexCenter(double lat, double lng, double zoom) {}
+  static void update2GisCamera3D(
+    double lat,
+    double lng,
+    double zoom,
+    double headingDeg,
+    double pitchDeg,
+  ) {}
   static Offset? pollClickedYandexCoords() => null;
   static void startWebSiren() {}
   static void stopWebSiren() {}

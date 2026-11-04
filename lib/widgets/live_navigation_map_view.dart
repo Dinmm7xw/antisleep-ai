@@ -64,6 +64,9 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   static const MethodChannel _bgChannel =
       MethodChannel('antisleep_ai/background');
 
+  /// Official 2GIS API Key (MapGL 3D WebGL, 2GIS Directions, 2GIS Car Routing & 2GIS Places Catalog)
+  static const String _twoGisApiKey = '01a1951a-28ee-4a07-9e99-40ba82333bb0';
+
   static const List<_PresetPlace> _presets = <_PresetPlace>[
     _PresetPlace('Астана: Туркестан / Улы Дала', LatLng(51.1065, 71.4145)),
     _PresetPlace('Астана: Акмешит (Space Office)', LatLng(51.1142, 71.4218)),
@@ -152,17 +155,40 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      WebFaceBridge.registerYandexMapView(
+        'antisleep-2gis-map',
+        _pointA.latitude,
+        _pointA.longitude,
+        _pointB.latitude,
+        _pointB.longitude,
+      );
+    }
     // 1. Immediately initialize dense street route so road + movement work in 0ms
     _applyWaypointsAndBuildArrows(
       _defaultAstanaStreetGeometry,
       totalDistMeters: 17000.0,
       etaMin: 51,
     );
-    // 2. Also query OSRM for exact turn steps
+    // 2. Query official 2GIS Routing API + OSRM for exact turn steps
     _fetchRealRoadRoute(_pointA, _pointB, announceVoice: false);
-    // 3. Start 30FPS smooth forward road movement & camera rotation
+    // 3. Start 25FPS smooth forward road movement & 3D camera rotation
     _startSmoothNavigatorEngine();
     _startGpsTracking();
+  }
+
+  void _syncRouteTo2GisWebGl() {
+    if (!kIsWeb) return;
+    final List<List<double>> pts = _routeWaypoints
+        .map((LatLng p) => <double>[p.latitude, p.longitude])
+        .toList();
+    WebFaceBridge.updateYandexRoute(
+      pts,
+      _pointA.latitude,
+      _pointA.longitude,
+      _pointB.latitude,
+      _pointB.longitude,
+    );
   }
 
   /// Subdivides route segments into dense ~8-meter points and generates white directional arrows along the road.
@@ -228,6 +254,15 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   }
 
   void _moveAndRotateCamera(LatLng center, double zoom, double headingDeg) {
+    if (kIsWeb) {
+      WebFaceBridge.update2GisCamera3D(
+        center.latitude,
+        center.longitude,
+        zoom,
+        headingDeg,
+        _is3DPerspective ? 48.0 : 0.0,
+      );
+    }
     try {
       _mapController.moveAndRotate(
         center,
@@ -360,7 +395,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     );
   }
 
-  /// Queries OSRM real road routing engine for exact street geometry, distance, ETA, and turn-by-turn steps.
+  /// Queries official 2GIS Car Routing API (with OSRM fallback) for exact street geometry, distance, ETA, and turn-by-turn steps.
   Future<void> _fetchRealRoadRoute(
     LatLng start,
     LatLng end, {
@@ -369,6 +404,154 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     if (!mounted) return;
     setState(() => _isCalculatingRoute = true);
 
+    // 1. Try Official 2GIS Car Routing API (key: 01a1951a-28ee-4a07-9e99-40ba82333bb0)
+    try {
+      final Uri dgisRoutingUri = Uri.parse(
+        'https://routing.api.2gis.com/carrouting/6.0.0/global?key=$_twoGisApiKey',
+      );
+      final http.Response dgisRes = await http
+          .post(
+            dgisRoutingUri,
+            headers: const <String, String>{'Content-Type': 'application/json'},
+            body: jsonEncode(<String, dynamic>{
+              'points': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'type': 'walking',
+                  'x': start.longitude,
+                  'y': start.latitude,
+                },
+                <String, dynamic>{
+                  'type': 'walking',
+                  'x': end.longitude,
+                  'y': end.latitude,
+                },
+              ],
+              'type': 'jam',
+              'output': 'detailed',
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (dgisRes.statusCode == 200) {
+        final Map<String, dynamic> dgisData =
+            jsonDecode(dgisRes.body) as Map<String, dynamic>;
+        final List<dynamic>? resultList =
+            dgisData['result'] as List<dynamic>?;
+        if (resultList != null && resultList.isNotEmpty) {
+          final Map<String, dynamic> firstRoute =
+              resultList.first as Map<String, dynamic>;
+          final double totalDist =
+              (firstRoute['total_distance'] as num?)?.toDouble() ?? 1500.0;
+          final double totalDur =
+              (firstRoute['total_duration'] as num?)?.toDouble() ?? 300.0;
+
+          final List<LatLng> dgisPoints = <LatLng>[];
+          final List<_RouteStep> dgisSteps = <_RouteStep>[];
+
+          final List<dynamic>? maneuvers =
+              firstRoute['maneuvers'] as List<dynamic>?;
+          if (maneuvers != null) {
+            for (final dynamic m in maneuvers) {
+              final Map<String, dynamic> man = m as Map<String, dynamic>;
+              final String comment =
+                  (man['comment'] as String? ?? 'Прямо').trim();
+              final Map<String, dynamic>? outPath =
+                  man['outcoming_path'] as Map<String, dynamic>?;
+              final double segDist =
+                  (outPath?['distance'] as num?)?.toDouble() ?? 100.0;
+              final List<dynamic>? names =
+                  outPath?['names'] as List<dynamic>?;
+              final String streetName = (names != null && names.isNotEmpty)
+                  ? names.first.toString()
+                  : _pointBLabel;
+
+              final List<dynamic>? geomList =
+                  outPath?['geometry'] as List<dynamic>?;
+              LatLng? firstStepPt;
+              if (geomList != null) {
+                for (final dynamic g in geomList) {
+                  final Map<String, dynamic> gMap = g as Map<String, dynamic>;
+                  final String selection =
+                      gMap['selection'] as String? ?? '';
+                  if (selection.startsWith('LINESTRING')) {
+                    final String inner = selection
+                        .replaceAll('LINESTRING(', '')
+                        .replaceAll(')', '');
+                    for (final String pairStr in inner.split(',')) {
+                      final List<String> parts =
+                          pairStr.trim().split(RegExp(r'\s+'));
+                      if (parts.length >= 2) {
+                        final double? lng = double.tryParse(parts[0]);
+                        final double? lat = double.tryParse(parts[1]);
+                        if (lat != null && lng != null) {
+                          final LatLng pt = LatLng(lat, lng);
+                          dgisPoints.add(pt);
+                          firstStepPt ??= pt;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (firstStepPt != null) {
+                dgisSteps.add(
+                  _RouteStep(
+                    actionText: comment,
+                    streetName: streetName,
+                    distanceMeters: segDist,
+                    location: firstStepPt,
+                    icon: comment.toLowerCase().contains('лев')
+                        ? Icons.turn_left_rounded
+                        : (comment.toLowerCase().contains('прав')
+                            ? Icons.turn_right_rounded
+                            : Icons.arrow_upward_rounded),
+                  ),
+                );
+              }
+            }
+          }
+
+          if (dgisPoints.length > 1 && mounted) {
+            final _RouteStep firstTurn = dgisSteps.isNotEmpty
+                ? dgisSteps.first
+                : _RouteStep(
+                    actionText: 'Прямо',
+                    streetName: _pointBLabel,
+                    distanceMeters: 250,
+                    location: start,
+                    icon: Icons.arrow_upward_rounded,
+                  );
+            setState(() {
+              _applyWaypointsAndBuildArrows(
+                dgisPoints,
+                totalDistMeters: totalDist,
+                etaMin: math.max(1, (totalDur / 60.0).round()),
+              );
+              _routeSteps = dgisSteps;
+              _activeStepIndex = 0;
+              _lastSpokenStepIndex = -1;
+              _nextActionText = firstTurn.actionText;
+              _nextStreetInstruction = firstTurn.streetName;
+              _nextStepDistanceMeters = firstTurn.distanceMeters;
+              _nextManeuverIcon = firstTurn.icon;
+              _isCalculatingRoute = false;
+            });
+            _syncRouteTo2GisWebGl();
+            if (announceVoice) {
+              _speak(
+                'Маршрут 2ГИС построен. ${_formatMeters(totalDist)}, время в пути $_routeEtaMinutes минут.',
+              );
+            }
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('2GIS Routing API fallback to OSRM: $e');
+    }
+
+    // 2. Fallback to OSRM street routing engine
     try {
       final Uri url = Uri.parse(
         'https://router.project-osrm.org/route/v1/driving/'
@@ -487,6 +670,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
               _nextManeuverIcon = firstTurn.icon;
               _isCalculatingRoute = false;
             });
+            _syncRouteTo2GisWebGl();
 
             if (announceVoice) {
               _speak(
@@ -505,7 +689,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     setState(() => _isCalculatingRoute = false);
   }
 
-  /// Geocodes an address string via OpenStreetMap Nominatim and returns its coordinates & short label.
+  /// Geocodes an address string via Official 2GIS Catalog API (with Nominatim fallback) and returns its coordinates & short label.
   Future<_PresetPlace?> _geocodeAddress(String query) async {
     final String trimmed = query.trim();
     if (trimmed.isEmpty) return null;
@@ -516,6 +700,45 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
       }
     }
 
+    // 1. Official 2GIS Places & Geocoder API (key: 01a1951a-28ee-4a07-9e99-40ba82333bb0)
+    try {
+      final Uri dgisUri = Uri.parse(
+        'https://catalog.api.2gis.com/3.0/items'
+        '?q=${Uri.encodeComponent(trimmed)}'
+        '&fields=items.point,items.full_name'
+        '&key=$_twoGisApiKey',
+      );
+      final http.Response dgisRes =
+          await http.get(dgisUri).timeout(const Duration(seconds: 5));
+      if (dgisRes.statusCode == 200) {
+        final Map<String, dynamic> dgisJson =
+            jsonDecode(dgisRes.body) as Map<String, dynamic>;
+        final Map<String, dynamic>? result =
+            dgisJson['result'] as Map<String, dynamic>?;
+        final List<dynamic>? items = result?['items'] as List<dynamic>?;
+        if (items != null && items.isNotEmpty) {
+          for (final dynamic rawItem in items) {
+            final Map<String, dynamic> item =
+                rawItem as Map<String, dynamic>;
+            final Map<String, dynamic>? pt =
+                item['point'] as Map<String, dynamic>?;
+            if (pt != null && pt['lat'] != null && pt['lon'] != null) {
+              final double lat = (pt['lat'] as num).toDouble();
+              final double lon = (pt['lon'] as num).toDouble();
+              final String name = (item['name'] as String? ??
+                      item['full_name'] as String? ??
+                      trimmed)
+                  .trim();
+              return _PresetPlace(name, LatLng(lat, lon));
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('2GIS Catalog geocode fallback: $e');
+    }
+
+    // 2. OpenStreetMap Nominatim fallback
     try {
       final Uri uri = Uri.parse(
         'https://nominatim.openstreetmap.org/search'
@@ -645,6 +868,10 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
       if (!mounted) return;
 
       if (kIsWeb) {
+        final Offset? clicked = WebFaceBridge.pollClickedYandexCoords();
+        if (clicked != null) {
+          _onMapTapped(LatLng(clicked.dx, clicked.dy));
+        }
         final WebGpsData? webGps = WebFaceBridge.pollLatestWebGps();
         if (webGps != null && webGps.speedKmh > 3.0) {
           final LatLng newPos = LatLng(webGps.lat, webGps.lng);
@@ -746,9 +973,12 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         return Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            // 1. True 3D Perspective Tilted Map Viewport (like 2GIS / Yandex 3D Navigator)
-            ClipRect(
-              child: Transform(
+            // 1. Official 2GIS MapGL 3D WebGL Engine OR 3D Perspective Tilted 2GIS Navigator Viewport
+            if (kIsWeb && _mapStyleIndex == 1)
+              const HtmlElementView(viewType: 'antisleep-2gis-map')
+            else
+              ClipRect(
+                child: Transform(
                 alignment: Alignment.center,
                 transform: _is3DPerspective
                     ? (Matrix4.identity()

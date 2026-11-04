@@ -53,6 +53,15 @@ external void _jsMoveYandexCenter(
   JSNumber zoom,
 );
 
+@JS('_antiSleepUpdate2GisCamera3D')
+external void _jsUpdate2GisCamera3D(
+  JSNumber lat,
+  JSNumber lng,
+  JSNumber zoom,
+  JSNumber headingDeg,
+  JSNumber pitchDeg,
+);
+
 @JS('_antiSleepStartWebSiren')
 external void _jsStartWebSiren();
 
@@ -198,6 +207,24 @@ class WebFaceBridge {
   static void moveYandexCenter(double lat, double lng, double zoom) {
     try {
       _jsMoveYandexCenter(lat.toJS, lng.toJS, zoom.toJS);
+    } catch (_) {}
+  }
+
+  static void update2GisCamera3D(
+    double lat,
+    double lng,
+    double zoom,
+    double headingDeg,
+    double pitchDeg,
+  ) {
+    try {
+      _jsUpdate2GisCamera3D(
+        lat.toJS,
+        lng.toJS,
+        zoom.toJS,
+        headingDeg.toJS,
+        pitchDeg.toJS,
+      );
     } catch (_) {}
   }
 
