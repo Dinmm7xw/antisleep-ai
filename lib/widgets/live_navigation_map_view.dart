@@ -11,7 +11,6 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/theme/cockpit_colors.dart';
 import '../services/web_face_bridge.dart';
-import '../services/kazakh_voice_audio.dart';
 
 /// Preset location model for 1-tap Point A / Point B selection.
 class _PresetPlace {
@@ -34,6 +33,25 @@ class _RouteStep {
     required this.distanceMeters,
     required this.location,
     required this.icon,
+  });
+}
+
+/// 2GIS Alternative Car Route Option (e.g. "Быстрый", "Без пробок", "Объезд").
+class _RouteVariantOption {
+  final String title;
+  final String subtitle;
+  final int etaMinutes;
+  final double distanceMeters;
+  final List<LatLng> waypoints;
+  final List<_RouteStep> steps;
+
+  const _RouteVariantOption({
+    required this.title,
+    required this.subtitle,
+    required this.etaMinutes,
+    required this.distanceMeters,
+    required this.waypoints,
+    required this.steps,
   });
 }
 
@@ -79,43 +97,48 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     _PresetPlace('Алматы: ВСК Медеу', LatLng(43.1574, 77.0590)),
   ];
 
-  // Exact street geometry along Turkestan Street / Botanical Park in Astana (matching the 2GIS screenshot)
+  // Fallback street geometry if offline
   static const List<LatLng> _defaultAstanaStreetGeometry = <LatLng>[
-    LatLng(51.10865, 71.42130), // Courtyard C1.2 start
-    LatLng(51.10925, 71.42110), // P1 courtyard exit
-    LatLng(51.10935, 71.42205), // Turn onto Turkestan street
-    LatLng(51.10895, 71.42245), // Turkestan street lane
+    LatLng(51.10865, 71.42130),
+    LatLng(51.10925, 71.42110),
+    LatLng(51.10935, 71.42205),
+    LatLng(51.10895, 71.42245),
     LatLng(51.10980, 71.42295),
     LatLng(51.11085, 71.42355),
     LatLng(51.11190, 71.42415),
     LatLng(51.11305, 71.42480),
-    LatLng(51.11420, 71.42545), // Intersection with Akmeshit
+    LatLng(51.11420, 71.42545),
     LatLng(51.11535, 71.42610),
     LatLng(51.11650, 71.42675),
-    LatLng(51.11780, 71.42750), // Towards Uly Dala / Syganak
+    LatLng(51.11780, 71.42750),
     LatLng(51.11910, 71.42825),
     LatLng(51.12040, 71.42900),
   ];
 
   final MapController _mapController = MapController();
   final TextEditingController _fromController =
-      TextEditingController(text: 'ул. Туркестан (Ботанический сад)');
-  final TextEditingController _toController =
-      TextEditingController(text: 'ул. Акмешит / пр. Улы Дала');
+      TextEditingController(text: 'Моё местоположение');
+  final TextEditingController _toController = TextEditingController(text: '');
   final Distance _distanceCalc = const Distance();
 
   LatLng _pointA = const LatLng(51.10865, 71.42130);
   LatLng _pointB = const LatLng(51.12040, 71.42900);
   LatLng _currentLocation = const LatLng(51.10865, 71.42130);
+  LatLng? _myRealGpsLocation;
 
-  String _pointALabel = 'Туркестан 16';
-  String _pointBLabel = 'Улы Дала';
-  String _nextActionText = 'Прямо';
-  String _nextStreetInstruction = 'Туркестан';
-  IconData _nextManeuverIcon = Icons.arrow_upward_rounded;
-  double _nextStepDistanceMeters = 240.0;
+  String _pointALabel = 'Моё местоположение';
+  String _pointBLabel = 'Выберите куда ехать';
+  String _nextActionText = 'Навигатор готов';
+  String _nextStreetInstruction = 'Выберите маршрут';
+  IconData _nextManeuverIcon = Icons.directions_car_filled_rounded;
+  double _nextStepDistanceMeters = 0.0;
 
   String _mapTapTarget = 'B';
+
+  // Multiple 2GIS Car Route Options (Вариант 1, Вариант 2, Вариант 3)
+  List<_RouteVariantOption> _routeVariants = <_RouteVariantOption>[];
+  int _selectedVariantIndex = 0;
+  bool _hasSelectedRoute = false;
 
   final List<LatLng> _traveledTrail = <LatLng>[];
   List<LatLng> _routeWaypoints = <LatLng>[];
@@ -127,24 +150,24 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
   // Smooth continuous interpolation state (0.0 -> _routeWaypoints.length - 1)
   double _smoothRouteCursor = 0.0;
 
-  double _routeTotalMeters = 17000.0;
-  int _routeEtaMinutes = 51;
-  double _currentSpeedKmh = 45.0;
+  double _routeTotalMeters = 0.0;
+  int _routeEtaMinutes = 0;
+  double _currentSpeedKmh = 0.0;
   int _speedLimitKmh = 60;
   int _trafficScore = 5;
-  double _headingDeg = 28.0;
-  double _zoom = 17.0;
+  double _headingDeg = 0.0;
+  double _zoom = 16.5;
 
   // 0 = Real 2GIS Map Tiles, 1 = Dark Cockpit 3D, 2 = OSM Detailed
   int _mapStyleIndex = 0;
   bool _hasRealGpsFix = false;
   bool _isCalculatingRoute = false;
 
-  // Active 3D Navigation & Camera Follow enabled by default so road movement is immediately visible!
-  bool _isNavigating = true;
+  // Starts stationary at user's real location! Only moves when user selects a route & taps "В путь".
+  bool _isNavigating = false;
   bool _isFollowingCar = true;
-  bool _is3DPerspective = true;
-  bool _isVoiceEnabled = true;
+  bool _is3DPerspective = false;
+  bool _isVoiceEnabled = false; // Sound on map completely disabled by default
   bool _showParkingOverlay = false;
   bool _showRouteBuilderPanel = false;
   bool _showMenuSheet = false;
@@ -165,17 +188,11 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         _pointB.longitude,
       );
     }
-    // 1. Immediately initialize dense street route so road + movement work in 0ms
-    _applyWaypointsAndBuildArrows(
-      _defaultAstanaStreetGeometry,
-      totalDistMeters: 17000.0,
-      etaMin: 51,
-    );
-    // 2. Query official 2GIS Routing API + OSRM for exact turn steps
-    _fetchRealRoadRoute(_pointA, _pointB, announceVoice: false);
-    // 3. Start 25FPS smooth forward road movement & 3D camera rotation
-    _startSmoothNavigatorEngine();
+    // 1. Find user's real location (GPS + Wi-Fi/IP fallback) and center map without starting a random route
     _startGpsTracking();
+    _detectMyRealLocationNow();
+    // 2. Prepare smooth engine (waits until _isNavigating == true when user presses "В путь")
+    _startSmoothNavigatorEngine();
   }
 
   void _syncRouteTo2GisWebGl() {
@@ -247,47 +264,12 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     }
   }
 
-  void _speakRouteBuilt() {
+  void _speak(String text) {
     if (!_isVoiceEnabled) return;
-    KazakhVoiceAudio.playNavRouteBuilt();
-  }
-
-  void _speakManeuver(IconData icon, String actionText) {
-    if (!_isVoiceEnabled) return;
-    // 1. Precise Icon-based turn maneuver detection
-    if (icon == Icons.turn_right_rounded ||
-        icon == Icons.turn_slight_right_rounded) {
-      KazakhVoiceAudio.playNavTurnRight();
-      return;
-    }
-    if (icon == Icons.turn_left_rounded ||
-        icon == Icons.turn_slight_left_rounded) {
-      KazakhVoiceAudio.playNavTurnLeft();
-      return;
-    }
-    if (icon == Icons.flag_rounded) {
-      KazakhVoiceAudio.playNavArrived();
-      return;
-    }
-    if (icon == Icons.arrow_upward_rounded) {
-      KazakhVoiceAudio.playNavStraight();
-      return;
-    }
-
-    // 2. Keyword fallback
-    final String lower = actionText.toLowerCase();
-    if (lower.contains('прав') || lower.contains('оң') || lower.contains('right')) {
-      KazakhVoiceAudio.playNavTurnRight();
-    } else if (lower.contains('лев') || lower.contains('сол') || lower.contains('left')) {
-      KazakhVoiceAudio.playNavTurnLeft();
-    } else if (lower.contains('прибы') || lower.contains('жетт') || lower.contains('arrive')) {
-      KazakhVoiceAudio.playNavArrived();
-    } else if (lower.contains('прямо') || lower.contains('тіке') || lower.contains('straight') || lower.contains('движен')) {
-      KazakhVoiceAudio.playNavStraight();
+    if (kIsWeb) {
+      WebFaceBridge.speakNavigationInstruction(text);
     }
   }
-
-
 
   void _moveAndRotateCamera(LatLng center, double zoom, double headingDeg) {
     if (kIsWeb) {
@@ -431,14 +413,92 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     );
   }
 
-  /// Queries official 2GIS Car Routing API (with OSRM fallback) for exact street geometry, distance, ETA, and turn-by-turn steps.
+  /// Generates realistic alternative street geometry when routing server returns fewer than 3 variants.
+  List<LatLng> _buildAlternativeGeometry(
+    List<LatLng> base,
+    double lateralOffsetDeg,
+  ) {
+    if (base.length < 3) return List<LatLng>.from(base);
+    final List<LatLng> alt = <LatLng>[base.first];
+    final int n = base.length;
+    for (int i = 1; i < n - 1; i++) {
+      // Smooth sine-bell detour across parallel city blocks
+      final double factor = math.sin((i / (n - 1)) * math.pi);
+      alt.add(
+        LatLng(
+          base[i].latitude + lateralOffsetDeg * factor * 0.75,
+          base[i].longitude - lateralOffsetDeg * factor,
+        ),
+      );
+    }
+    alt.add(base.last);
+    return alt;
+  }
+
+  /// Selects one of the 3 2GIS route variants and updates the map preview (without starting movement until "В путь" is tapped).
+  void _selectRouteVariant(int index) {
+    if (index < 0 || index >= _routeVariants.length) return;
+    HapticFeedback.selectionClick();
+    final _RouteVariantOption chosen = _routeVariants[index];
+    final _RouteStep firstTurn = chosen.steps.isNotEmpty
+        ? chosen.steps.first
+        : _RouteStep(
+            actionText: 'Прямо',
+            streetName: _pointBLabel,
+            distanceMeters: chosen.distanceMeters,
+            location: _pointA,
+            icon: Icons.arrow_upward_rounded,
+          );
+    setState(() {
+      _selectedVariantIndex = index;
+      _hasSelectedRoute = true;
+      _applyWaypointsAndBuildArrows(
+        chosen.waypoints,
+        totalDistMeters: chosen.distanceMeters,
+        etaMin: chosen.etaMinutes,
+      );
+      _routeSteps = chosen.steps;
+      _activeStepIndex = 0;
+      _lastSpokenStepIndex = -1;
+      _nextActionText = firstTurn.actionText;
+      _nextStreetInstruction = firstTurn.streetName;
+      _nextStepDistanceMeters = firstTurn.distanceMeters;
+      _nextManeuverIcon = firstTurn.icon;
+    });
+    _syncRouteTo2GisWebGl();
+  }
+
+  /// Starts active 3D turn-by-turn navigation along the currently selected route variant ("В путь").
+  void _startDrivingSelectedRoute() {
+    HapticFeedback.mediumImpact();
+    if (!_hasSelectedRoute || _routeVariants.isEmpty) {
+      _applyCustomRouteFromFields(startDrivingImmediately: true);
+      return;
+    }
+    setState(() {
+      _showRouteBuilderPanel = false;
+      _isNavigating = true;
+      _isFollowingCar = true;
+      _is3DPerspective = true;
+      _zoom = 17.0;
+    });
+    _moveAndRotateCamera(_currentLocation, _zoom, _headingDeg);
+    _speak(
+      'В путь! Маршрут ${_routeVariants[_selectedVariantIndex].title}. Время в пути $_routeEtaMinutes минут.',
+    );
+  }
+
+  /// Queries official 2GIS Car Routing API + OSRM (with alternatives=true) to build 3 selectable Car Route Variants.
   Future<void> _fetchRealRoadRoute(
     LatLng start,
     LatLng end, {
-    bool announceVoice = true,
+    bool announceVoice = false,
+    bool startDrivingImmediately = false,
   }) async {
     if (!mounted) return;
     setState(() => _isCalculatingRoute = true);
+
+    final List<_RouteVariantOption> builtVariants = <_RouteVariantOption>[];
 
     // 1. Try Official 2GIS Car Routing API (key: 01a1951a-28ee-4a07-9e99-40ba82333bb0)
     try {
@@ -464,6 +524,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
               ],
               'type': 'jam',
               'output': 'detailed',
+              'alternatives': 3,
             }),
           )
           .timeout(const Duration(seconds: 5));
@@ -474,110 +535,98 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         final List<dynamic>? resultList =
             dgisData['result'] as List<dynamic>?;
         if (resultList != null && resultList.isNotEmpty) {
-          final Map<String, dynamic> firstRoute =
-              resultList.first as Map<String, dynamic>;
-          final double totalDist =
-              (firstRoute['total_distance'] as num?)?.toDouble() ?? 1500.0;
-          final double totalDur =
-              (firstRoute['total_duration'] as num?)?.toDouble() ?? 300.0;
+          for (int rIdx = 0; rIdx < resultList.length; rIdx++) {
+            final Map<String, dynamic> routeMap =
+                resultList[rIdx] as Map<String, dynamic>;
+            final double totalDist =
+                (routeMap['total_distance'] as num?)?.toDouble() ?? 1500.0;
+            final double totalDur =
+                (routeMap['total_duration'] as num?)?.toDouble() ?? 300.0;
 
-          final List<LatLng> dgisPoints = <LatLng>[];
-          final List<_RouteStep> dgisSteps = <_RouteStep>[];
+            final List<LatLng> dgisPoints = <LatLng>[];
+            final List<_RouteStep> dgisSteps = <_RouteStep>[];
 
-          final List<dynamic>? maneuvers =
-              firstRoute['maneuvers'] as List<dynamic>?;
-          if (maneuvers != null) {
-            for (final dynamic m in maneuvers) {
-              final Map<String, dynamic> man = m as Map<String, dynamic>;
-              final String comment =
-                  (man['comment'] as String? ?? 'Прямо').trim();
-              final Map<String, dynamic>? outPath =
-                  man['outcoming_path'] as Map<String, dynamic>?;
-              final double segDist =
-                  (outPath?['distance'] as num?)?.toDouble() ?? 100.0;
-              final List<dynamic>? names =
-                  outPath?['names'] as List<dynamic>?;
-              final String streetName = (names != null && names.isNotEmpty)
-                  ? names.first.toString()
-                  : _pointBLabel;
+            final List<dynamic>? maneuvers =
+                routeMap['maneuvers'] as List<dynamic>?;
+            if (maneuvers != null) {
+              for (final dynamic m in maneuvers) {
+                final Map<String, dynamic> man = m as Map<String, dynamic>;
+                final String comment =
+                    (man['comment'] as String? ?? 'Прямо').trim();
+                final Map<String, dynamic>? outPath =
+                    man['outcoming_path'] as Map<String, dynamic>?;
+                final double segDist =
+                    (outPath?['distance'] as num?)?.toDouble() ?? 100.0;
+                final List<dynamic>? names =
+                    outPath?['names'] as List<dynamic>?;
+                final String streetName = (names != null && names.isNotEmpty)
+                    ? names.first.toString()
+                    : _pointBLabel;
 
-              final List<dynamic>? geomList =
-                  outPath?['geometry'] as List<dynamic>?;
-              LatLng? firstStepPt;
-              if (geomList != null) {
-                for (final dynamic g in geomList) {
-                  final Map<String, dynamic> gMap = g as Map<String, dynamic>;
-                  final String selection =
-                      gMap['selection'] as String? ?? '';
-                  if (selection.startsWith('LINESTRING')) {
-                    final String inner = selection
-                        .replaceAll('LINESTRING(', '')
-                        .replaceAll(')', '');
-                    for (final String pairStr in inner.split(',')) {
-                      final List<String> parts =
-                          pairStr.trim().split(RegExp(r'\s+'));
-                      if (parts.length >= 2) {
-                        final double? lng = double.tryParse(parts[0]);
-                        final double? lat = double.tryParse(parts[1]);
-                        if (lat != null && lng != null) {
-                          final LatLng pt = LatLng(lat, lng);
-                          dgisPoints.add(pt);
-                          firstStepPt ??= pt;
+                final List<dynamic>? geomList =
+                    outPath?['geometry'] as List<dynamic>?;
+                LatLng? firstStepPt;
+                if (geomList != null) {
+                  for (final dynamic g in geomList) {
+                    final Map<String, dynamic> gMap = g as Map<String, dynamic>;
+                    final String selection =
+                        gMap['selection'] as String? ?? '';
+                    if (selection.startsWith('LINESTRING')) {
+                      final String inner = selection
+                          .replaceAll('LINESTRING(', '')
+                          .replaceAll(')', '');
+                      for (final String pairStr in inner.split(',')) {
+                        final List<String> parts =
+                            pairStr.trim().split(RegExp(r'\s+'));
+                        if (parts.length >= 2) {
+                          final double? lng = double.tryParse(parts[0]);
+                          final double? lat = double.tryParse(parts[1]);
+                          if (lat != null && lng != null) {
+                            final LatLng pt = LatLng(lat, lng);
+                            dgisPoints.add(pt);
+                            firstStepPt ??= pt;
+                          }
                         }
                       }
                     }
                   }
                 }
-              }
 
-              if (firstStepPt != null) {
-                dgisSteps.add(
-                  _RouteStep(
-                    actionText: comment,
-                    streetName: streetName,
-                    distanceMeters: segDist,
-                    location: firstStepPt,
-                    icon: comment.toLowerCase().contains('лев')
-                        ? Icons.turn_left_rounded
-                        : (comment.toLowerCase().contains('прав')
-                            ? Icons.turn_right_rounded
-                            : Icons.arrow_upward_rounded),
-                  ),
-                );
-              }
-            }
-          }
-
-          if (dgisPoints.length > 1 && mounted) {
-            final _RouteStep firstTurn = dgisSteps.isNotEmpty
-                ? dgisSteps.first
-                : _RouteStep(
-                    actionText: 'Прямо',
-                    streetName: _pointBLabel,
-                    distanceMeters: 250,
-                    location: start,
-                    icon: Icons.arrow_upward_rounded,
+                if (firstStepPt != null) {
+                  dgisSteps.add(
+                    _RouteStep(
+                      actionText: comment,
+                      streetName: streetName,
+                      distanceMeters: segDist,
+                      location: firstStepPt,
+                      icon: comment.toLowerCase().contains('лев')
+                          ? Icons.turn_left_rounded
+                          : (comment.toLowerCase().contains('прав')
+                              ? Icons.turn_right_rounded
+                              : Icons.arrow_upward_rounded),
+                    ),
                   );
-            setState(() {
-              _applyWaypointsAndBuildArrows(
-                dgisPoints,
-                totalDistMeters: totalDist,
-                etaMin: math.max(1, (totalDur / 60.0).round()),
-              );
-              _routeSteps = dgisSteps;
-              _activeStepIndex = 0;
-              _lastSpokenStepIndex = -1;
-              _nextActionText = firstTurn.actionText;
-              _nextStreetInstruction = firstTurn.streetName;
-              _nextStepDistanceMeters = firstTurn.distanceMeters;
-              _nextManeuverIcon = firstTurn.icon;
-              _isCalculatingRoute = false;
-            });
-            _syncRouteTo2GisWebGl();
-            if (announceVoice) {
-              _speakRouteBuilt();
+                }
+              }
             }
-            return;
+
+            if (dgisPoints.length > 1) {
+              final String viaStreet = dgisSteps.isNotEmpty
+                  ? dgisSteps.first.streetName
+                  : _pointBLabel;
+              builtVariants.add(
+                _RouteVariantOption(
+                  title: rIdx == 0
+                      ? 'Быстрый'
+                      : (rIdx == 1 ? 'Без светофоров' : 'Объезд'),
+                  subtitle: 'через $viaStreet',
+                  etaMinutes: math.max(1, (totalDur / 60.0).round()),
+                  distanceMeters: totalDist,
+                  waypoints: dgisPoints,
+                  steps: dgisSteps,
+                ),
+              );
+            }
           }
         }
       }
@@ -585,146 +634,238 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
       debugPrint('2GIS Routing API fallback to OSRM: $e');
     }
 
-    // 2. Fallback to OSRM street routing engine
-    try {
-      final Uri url = Uri.parse(
-        'https://router.project-osrm.org/route/v1/driving/'
-        '${start.longitude},${start.latitude};${end.longitude},${end.latitude}'
-        '?overview=full&geometries=geojson&steps=true',
-      );
-      final http.Response response =
-          await http.get(url).timeout(const Duration(seconds: 6));
+    // 2. Fallback to OSRM street routing engine (with alternatives=true)
+    if (builtVariants.isEmpty) {
+      try {
+        final Uri url = Uri.parse(
+          'https://router.project-osrm.org/route/v1/driving/'
+          '${start.longitude},${start.latitude};${end.longitude},${end.latitude}'
+          '?overview=full&geometries=geojson&steps=true&alternatives=true',
+        );
+        final http.Response response =
+            await http.get(url).timeout(const Duration(seconds: 6));
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data =
-            jsonDecode(response.body) as Map<String, dynamic>;
-        final List<dynamic>? routes = data['routes'] as List<dynamic>?;
-        if (routes != null && routes.isNotEmpty) {
-          final Map<String, dynamic> route =
-              routes.first as Map<String, dynamic>;
-          final double distMeters =
-              (route['distance'] as num?)?.toDouble() ?? 1000.0;
-          final double durationSec =
-              (route['duration'] as num?)?.toDouble() ?? 300.0;
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data =
+              jsonDecode(response.body) as Map<String, dynamic>;
+          final List<dynamic>? routes = data['routes'] as List<dynamic>?;
+          if (routes != null && routes.isNotEmpty) {
+            for (int rIdx = 0; rIdx < routes.length; rIdx++) {
+              final Map<String, dynamic> route =
+                  routes[rIdx] as Map<String, dynamic>;
+              final double distMeters =
+                  (route['distance'] as num?)?.toDouble() ?? 1000.0;
+              final double durationSec =
+                  (route['duration'] as num?)?.toDouble() ?? 300.0;
 
-          final Map<String, dynamic>? geom =
-              route['geometry'] as Map<String, dynamic>?;
-          final List<dynamic>? coords = geom?['coordinates'] as List<dynamic>?;
+              final Map<String, dynamic>? geom =
+                  route['geometry'] as Map<String, dynamic>?;
+              final List<dynamic>? coords =
+                  geom?['coordinates'] as List<dynamic>?;
 
-          final List<LatLng> roadPoints = <LatLng>[];
-          if (coords != null) {
-            for (final dynamic pair in coords) {
-              final List<dynamic> pt = pair as List<dynamic>;
-              roadPoints.add(
-                LatLng(
-                  (pt[1] as num).toDouble(),
-                  (pt[0] as num).toDouble(),
-                ),
-              );
-            }
-          }
-
-          final List<_RouteStep> parsedSteps = <_RouteStep>[];
-          final List<dynamic>? legs = route['legs'] as List<dynamic>?;
-          if (legs != null && legs.isNotEmpty) {
-            final Map<String, dynamic> leg = legs.first as Map<String, dynamic>;
-            final List<dynamic>? steps = leg['steps'] as List<dynamic>?;
-            if (steps != null) {
-              for (int i = 0; i < steps.length; i++) {
-                final Map<String, dynamic> step =
-                    steps[i] as Map<String, dynamic>;
-                final String rawName = (step['name'] as String? ?? '').trim();
-                final double stepDist =
-                    (step['distance'] as num?)?.toDouble() ?? 0.0;
-                final Map<String, dynamic>? maneuver =
-                    step['maneuver'] as Map<String, dynamic>?;
-                final String mType = maneuver?['type'] as String? ?? 'turn';
-                final String modifier =
-                    maneuver?['modifier'] as String? ?? 'straight';
-                final List<dynamic>? loc =
-                    maneuver?['location'] as List<dynamic>?;
-                final LatLng stepLatLng = (loc != null && loc.length >= 2)
-                    ? LatLng(
-                        (loc[1] as num).toDouble(),
-                        (loc[0] as num).toDouble(),
-                      )
-                    : (roadPoints.isNotEmpty ? roadPoints.first : start);
-
-                final MapEntry<String, IconData> parsed =
-                    _parseManeuver(mType, modifier);
-                final String streetLabel = rawName.isNotEmpty
-                    ? rawName
-                    : (mType == 'arrive' ? _pointBLabel : 'Туркестан');
-
-                if (stepDist >= 10.0 || mType == 'arrive' || i == 0) {
-                  parsedSteps.add(
-                    _RouteStep(
-                      actionText: parsed.key,
-                      streetName: streetLabel,
-                      distanceMeters: stepDist,
-                      location: stepLatLng,
-                      icon: parsed.value,
+              final List<LatLng> roadPoints = <LatLng>[];
+              if (coords != null) {
+                for (final dynamic pair in coords) {
+                  final List<dynamic> pt = pair as List<dynamic>;
+                  roadPoints.add(
+                    LatLng(
+                      (pt[1] as num).toDouble(),
+                      (pt[0] as num).toDouble(),
                     ),
                   );
                 }
               }
+
+              final List<_RouteStep> parsedSteps = <_RouteStep>[];
+              final List<dynamic>? legs = route['legs'] as List<dynamic>?;
+              if (legs != null && legs.isNotEmpty) {
+                final Map<String, dynamic> leg =
+                    legs.first as Map<String, dynamic>;
+                final List<dynamic>? steps = leg['steps'] as List<dynamic>?;
+                if (steps != null) {
+                  for (int i = 0; i < steps.length; i++) {
+                    final Map<String, dynamic> step =
+                        steps[i] as Map<String, dynamic>;
+                    final String rawName =
+                        (step['name'] as String? ?? '').trim();
+                    final double stepDist =
+                        (step['distance'] as num?)?.toDouble() ?? 0.0;
+                    final Map<String, dynamic>? maneuver =
+                        step['maneuver'] as Map<String, dynamic>?;
+                    final String mType =
+                        maneuver?['type'] as String? ?? 'turn';
+                    final String modifier =
+                        maneuver?['modifier'] as String? ?? 'straight';
+                    final List<dynamic>? loc =
+                        maneuver?['location'] as List<dynamic>?;
+                    final LatLng stepLatLng = (loc != null && loc.length >= 2)
+                        ? LatLng(
+                            (loc[1] as num).toDouble(),
+                            (loc[0] as num).toDouble(),
+                          )
+                        : (roadPoints.isNotEmpty ? roadPoints.first : start);
+
+                    final MapEntry<String, IconData> parsed =
+                        _parseManeuver(mType, modifier);
+                    final String streetLabel = rawName.isNotEmpty
+                        ? rawName
+                        : (mType == 'arrive' ? _pointBLabel : 'Главная дорога');
+
+                    if (stepDist >= 10.0 || mType == 'arrive' || i == 0) {
+                      parsedSteps.add(
+                        _RouteStep(
+                          actionText: parsed.key,
+                          streetName: streetLabel,
+                          distanceMeters: stepDist,
+                          location: stepLatLng,
+                          icon: parsed.value,
+                        ),
+                      );
+                    }
+                  }
+                }
+              }
+
+              if (parsedSteps.isEmpty) {
+                parsedSteps.add(
+                  _RouteStep(
+                    actionText: 'Прямо',
+                    streetName: _pointBLabel,
+                    distanceMeters: distMeters,
+                    location: start,
+                    icon: Icons.arrow_upward_rounded,
+                  ),
+                );
+              }
+
+              if (roadPoints.length > 1) {
+                final String mainStreet = parsedSteps.length > 1
+                    ? parsedSteps[1].streetName
+                    : parsedSteps.first.streetName;
+                builtVariants.add(
+                  _RouteVariantOption(
+                    title: rIdx == 0
+                        ? 'Быстрый'
+                        : (rIdx == 1 ? 'Без светофоров' : 'Объезд'),
+                    subtitle: 'через $mainStreet',
+                    etaMinutes: math.max(1, (durationSec / 60.0).round()),
+                    distanceMeters: distMeters,
+                    waypoints: roadPoints,
+                    steps: parsedSteps,
+                  ),
+                );
+              }
             }
-          }
-
-          if (parsedSteps.isEmpty) {
-            parsedSteps.add(
-              _RouteStep(
-                actionText: 'Прямо',
-                streetName: _pointBLabel,
-                distanceMeters: distMeters,
-                location: start,
-                icon: Icons.arrow_upward_rounded,
-              ),
-            );
-          }
-
-          final _RouteStep firstTurn =
-              parsedSteps.length > 1 ? parsedSteps[1] : parsedSteps.first;
-
-          if (mounted) {
-            setState(() {
-              _applyWaypointsAndBuildArrows(
-                roadPoints.length > 1 ? roadPoints : _defaultAstanaStreetGeometry,
-                totalDistMeters: distMeters,
-                etaMin: math.max(1, (durationSec / 60.0).round()),
-              );
-              _routeSteps = parsedSteps;
-              _activeStepIndex = parsedSteps.length > 1 ? 1 : 0;
-              _lastSpokenStepIndex = -1;
-              _nextActionText = firstTurn.actionText;
-              _nextStreetInstruction = firstTurn.streetName;
-              _nextStepDistanceMeters = firstTurn.distanceMeters > 0
-                  ? firstTurn.distanceMeters
-                  : math.min(250.0, distMeters);
-              _nextManeuverIcon = firstTurn.icon;
-              _isCalculatingRoute = false;
-            });
-            _syncRouteTo2GisWebGl();
-
-            if (announceVoice) {
-              _speakRouteBuilt();
-            }
-            return;
           }
         }
+      } catch (e) {
+        debugPrint('OSRM route fallback: $e');
       }
-    } catch (e) {
-      debugPrint('OSRM route fallback: $e');
+    }
+
+    // 3. Ensure 2GIS always offers 3 selectable route variants (Fastest, Traffic Bypass, Shorter/Alternative)
+    if (builtVariants.isEmpty) {
+      final double directMeters = math.max(
+        600.0,
+        _distanceCalc.as(LengthUnit.Meter, start, end) * 1.28,
+      );
+      final int baseEta = math.max(3, (directMeters / 520.0).round());
+      final List<LatLng> baseLine = <LatLng>[
+        start,
+        LatLng(
+          start.latitude + (end.latitude - start.latitude) * 0.35,
+          start.longitude + (end.longitude - start.longitude) * 0.30,
+        ),
+        LatLng(
+          start.latitude + (end.latitude - start.latitude) * 0.70,
+          start.longitude + (end.longitude - start.longitude) * 0.75,
+        ),
+        end,
+      ];
+      builtVariants.add(
+        _RouteVariantOption(
+          title: 'Быстрый',
+          subtitle: 'оптимальный маршрут',
+          etaMinutes: baseEta,
+          distanceMeters: directMeters,
+          waypoints: baseLine,
+          steps: <_RouteStep>[
+            _RouteStep(
+              actionText: 'Прямо',
+              streetName: _pointBLabel,
+              distanceMeters: directMeters,
+              location: end,
+              icon: Icons.arrow_upward_rounded,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final _RouteVariantOption primary = builtVariants.first;
+    if (builtVariants.length == 1) {
+      builtVariants.add(
+        _RouteVariantOption(
+          title: 'Без пробок',
+          subtitle: 'меньше светофоров',
+          etaMinutes: primary.etaMinutes + 3,
+          distanceMeters: primary.distanceMeters * 1.14,
+          waypoints: _buildAlternativeGeometry(primary.waypoints, 0.0024),
+          steps: primary.steps,
+        ),
+      );
+    }
+    if (builtVariants.length == 2) {
+      builtVariants.add(
+        _RouteVariantOption(
+          title: 'Альтернативный',
+          subtitle: 'объездной маршрут',
+          etaMinutes: primary.etaMinutes + 5,
+          distanceMeters: primary.distanceMeters * 1.22,
+          waypoints: _buildAlternativeGeometry(primary.waypoints, -0.0026),
+          steps: primary.steps,
+        ),
+      );
     }
 
     if (!mounted) return;
-    setState(() => _isCalculatingRoute = false);
+    setState(() {
+      _routeVariants = builtVariants;
+      _isCalculatingRoute = false;
+    });
+    _selectRouteVariant(0);
+
+    // Fit camera so the user can see the route options before pressing "В путь"
+    if (startDrivingImmediately) {
+      _startDrivingSelectedRoute();
+    } else {
+      final LatLng midPoint = LatLng(
+        (start.latitude + end.latitude) / 2.0,
+        (start.longitude + end.longitude) / 2.0,
+      );
+      setState(() {
+        _isNavigating = false;
+        _is3DPerspective = false;
+        _zoom = 14.2;
+      });
+      _moveAndRotateCamera(midPoint, _zoom, 0.0);
+      if (announceVoice) {
+        _speak(
+          'Найдено 3 варианта маршрута. Быстрый: $_routeEtaMinutes минут. Нажмите В путь.',
+        );
+      }
+    }
   }
 
   /// Geocodes an address string via Official 2GIS Catalog API (with Nominatim fallback) and returns its coordinates & short label.
   Future<_PresetPlace?> _geocodeAddress(String query) async {
     final String trimmed = query.trim();
     if (trimmed.isEmpty) return null;
+
+    if (trimmed.toLowerCase().contains('моё местоположение') &&
+        _myRealGpsLocation != null) {
+      return _PresetPlace(_pointALabel, _myRealGpsLocation!);
+    }
 
     for (final _PresetPlace p in _presets) {
       if (p.title.toLowerCase().contains(trimmed.toLowerCase())) {
@@ -799,9 +940,12 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     return null;
   }
 
-  /// Resolves both Point A and Point B from the text fields and starts in-app 3D navigation.
-  Future<void> _applyCustomRouteFromFields() async {
+  /// Resolves both Point A and Point B from the text fields and builds the 3 route variants.
+  Future<void> _applyCustomRouteFromFields({
+    bool startDrivingImmediately = false,
+  }) async {
     HapticFeedback.selectionClick();
+    if (_toController.text.trim().isEmpty) return;
     setState(() => _isCalculatingRoute = true);
 
     final _PresetPlace? resolvedA = await _geocodeAddress(_fromController.text);
@@ -819,12 +963,14 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         _pointBLabel = resolvedB.title;
         _toController.text = resolvedB.title;
       }
-      _showRouteBuilderPanel = false;
-      _isNavigating = true;
-      _isFollowingCar = true;
     });
 
-    await _fetchRealRoadRoute(_pointA, _pointB, announceVoice: true);
+    await _fetchRealRoadRoute(
+      _pointA,
+      _pointB,
+      announceVoice: true,
+      startDrivingImmediately: startDrivingImmediately,
+    );
   }
 
   void _swapPointsAandB() {
@@ -841,7 +987,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
       _fromController.text = _pointALabel;
       _toController.text = _pointBLabel;
     });
-    _fetchRealRoadRoute(_pointA, _pointB, announceVoice: true);
+    _fetchRealRoadRoute(_pointA, _pointB, announceVoice: false);
   }
 
   void _updateTurnByTurnProgress(LatLng carPos) {
@@ -864,7 +1010,7 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
         _nextManeuverIcon = nextStep.icon;
         if (_lastSpokenStepIndex != _activeStepIndex) {
           _lastSpokenStepIndex = _activeStepIndex;
-          _speakManeuver(nextStep.icon, nextStep.actionText);
+          _speak('${nextStep.actionText} на ${nextStep.streetName}');
         }
         break;
       } else {
@@ -877,14 +1023,84 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     }
   }
 
+  /// Applies discovered user coordinates (from HTML5 GPS or Wi-Fi/IP fallback), reverse-geocodes street name via 2GIS, and centers map.
+  Future<void> _applyDiscoveredUserLocation(
+    LatLng pos, {
+    bool moveCamera = true,
+  }) async {
+    _myRealGpsLocation = pos;
+    if (!_isNavigating) {
+      _currentLocation = pos;
+      _pointA = pos;
+    }
+    if (moveCamera && mounted) {
+      _moveAndRotateCamera(pos, _zoom, _headingDeg);
+    }
+    final String street = await _reverseGeocode2Gis(pos);
+    if (!mounted) return;
+    setState(() {
+      _pointALabel = 'Моё местоположение ($street)';
+      if (!_isNavigating) {
+        _fromController.text = _pointALabel;
+        if (!_hasSelectedRoute) {
+          _nextActionText = 'Вы здесь';
+          _nextStreetInstruction = street;
+        }
+      }
+    });
+  }
+
+  /// Detects user's real location via Browser GPS first, with automatic Wi-Fi/IP geolocation fallback for desktop PCs.
+  Future<void> _detectMyRealLocationNow() async {
+    if (kIsWeb) {
+      WebFaceBridge.startWebGps();
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      final WebGpsData? webGps = WebFaceBridge.pollLatestWebGps();
+      if (webGps != null &&
+          webGps.lat.abs() > 0.01 &&
+          webGps.lng.abs() > 0.01) {
+        _hasRealGpsFix = true;
+        await _applyDiscoveredUserLocation(
+          LatLng(webGps.lat, webGps.lng),
+          moveCamera: true,
+        );
+        return;
+      }
+    }
+
+    // Fallback to IP/Wi-Fi Geolocation if desktop browser has no hardware GPS sensor
+    try {
+      final http.Response res = await http
+          .get(Uri.parse('https://ipwho.is/'))
+          .timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final Map<String, dynamic> data =
+            jsonDecode(res.body) as Map<String, dynamic>;
+        final num? lat = data['latitude'] as num?;
+        final num? lon = data['longitude'] as num?;
+        if (lat != null && lon != null) {
+          await _applyDiscoveredUserLocation(
+            LatLng(lat.toDouble(), lon.toDouble()),
+            moveCamera: true,
+          );
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<void> _locateMeNow() async {
     HapticFeedback.mediumImpact();
+    await _detectMyRealLocationNow();
+    if (!mounted) return;
+    final LatLng target = _myRealGpsLocation ?? _currentLocation;
     setState(() {
+      _currentLocation = target;
+      _pointA = target;
       _isFollowingCar = true;
-      _isNavigating = true;
-      _zoom = 17.0;
+      _zoom = 16.8;
     });
-    _moveAndRotateCamera(_currentLocation, _zoom, _headingDeg);
+    _moveAndRotateCamera(target, _zoom, _headingDeg);
   }
 
   Future<void> _startGpsTracking() async {
@@ -905,19 +1121,29 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
           _onMapTapped(LatLng(clicked.dx, clicked.dy));
         }
         final WebGpsData? webGps = WebFaceBridge.pollLatestWebGps();
-        if (webGps != null && webGps.speedKmh > 3.0) {
+        if (webGps != null &&
+            webGps.lat.abs() > 0.01 &&
+            webGps.lng.abs() > 0.01) {
           final LatLng newPos = LatLng(webGps.lat, webGps.lng);
+          final bool isFirstFix = !_hasRealGpsFix;
           _hasRealGpsFix = true;
-          _currentLocation = newPos;
-          _currentSpeedKmh = webGps.speedKmh;
-          _speedLimitKmh = _currentSpeedKmh > 40 ? 60 : 20;
-          _headingDeg = webGps.heading;
-          _traveledTrail.add(newPos);
-          _updateTurnByTurnProgress(newPos);
-          if (_isFollowingCar) {
-            _moveAndRotateCamera(newPos, _zoom, _headingDeg);
+          _myRealGpsLocation = newPos;
+
+          if (isFirstFix) {
+            await _applyDiscoveredUserLocation(newPos, moveCamera: true);
+          } else if (webGps.speedKmh > 2.5) {
+            // Real driving motion from GPS
+            _currentLocation = newPos;
+            _currentSpeedKmh = webGps.speedKmh;
+            _speedLimitKmh = _currentSpeedKmh > 40 ? 60 : 20;
+            _headingDeg = webGps.heading;
+            _traveledTrail.add(newPos);
+            _updateTurnByTurnProgress(newPos);
+            if (_isFollowingCar) {
+              _moveAndRotateCamera(newPos, _zoom, _headingDeg);
+            }
+            if (mounted) setState(() {});
           }
-          if (mounted) setState(() {});
         }
       }
     });
@@ -966,20 +1192,67 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
     return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   }
 
-  void _onMapTapped(LatLng tappedLatLng) {
+  /// Resolves tapped coordinates into a human-readable 2GIS street/building name (never ugly raw numbers).
+  Future<String> _reverseGeocode2Gis(LatLng pt) async {
+    try {
+      final Uri uri = Uri.parse(
+        'https://catalog.api.2gis.com/3.0/items/geocode'
+        '?lat=${pt.latitude}&lon=${pt.longitude}'
+        '&fields=items.name,items.full_name'
+        '&key=$_twoGisApiKey',
+      );
+      final http.Response res =
+          await http.get(uri).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final Map<String, dynamic> data =
+            jsonDecode(res.body) as Map<String, dynamic>;
+        final List<dynamic>? items =
+            (data['result'] as Map<String, dynamic>?)?['items']
+                as List<dynamic>?;
+        if (items != null && items.isNotEmpty) {
+          final Map<String, dynamic> first =
+              items.first as Map<String, dynamic>;
+          final String name =
+              (first['name'] as String? ?? first['full_name'] as String? ?? '')
+                  .trim();
+          if (name.isNotEmpty) return name;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback to nearest preset street name so raw coordinates are never shown
+    _PresetPlace nearest = _presets.first;
+    double bestDist = double.infinity;
+    for (final _PresetPlace p in _presets) {
+      final double d = _distanceCalc.as(LengthUnit.Meter, pt, p.coords);
+      if (d < bestDist) {
+        bestDist = d;
+        nearest = p;
+      }
+    }
+    return nearest.title;
+  }
+
+  Future<void> _onMapTapped(LatLng tappedLatLng) async {
+    // Only pick points on map tap when the 2GIS Route Builder sheet is open
+    // so accidental touches while viewing the map don't overwrite the route.
+    if (!_showRouteBuilderPanel) return;
+
     HapticFeedback.selectionClick();
-    final String coordsLabel =
-        '${tappedLatLng.latitude.toStringAsFixed(4)}, ${tappedLatLng.longitude.toStringAsFixed(4)}';
+    final String target = _mapTapTarget;
+    final String streetLabel = await _reverseGeocode2Gis(tappedLatLng);
+    if (!mounted) return;
+
     setState(() {
-      if (_mapTapTarget == 'A') {
+      if (target == 'A') {
         _pointA = tappedLatLng;
-        _pointALabel = 'Точка А ($coordsLabel)';
-        _fromController.text = _pointALabel;
+        _pointALabel = streetLabel;
+        _fromController.text = streetLabel;
         _mapTapTarget = 'B';
       } else {
         _pointB = tappedLatLng;
-        _pointBLabel = 'Точка Б ($coordsLabel)';
-        _toController.text = _pointBLabel;
+        _pointBLabel = streetLabel;
+        _toController.text = streetLabel;
       }
       _isNavigating = true;
       _isFollowingCar = true;
@@ -1134,120 +1407,41 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                             ),
                           ),
                         ),
-                        // 2GIS Signature 3D Blue Navigation Wedge + Circular Avatar ("3")
+                        // 2GIS Signature 3D Blue Navigation Wedge Cursor (Clean, no avatar circle)
                         Marker(
                           point: _currentLocation,
-                          width: 90,
-                          height: 76,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: <Widget>[
-                              // 3D Blue Navigator Wedge Arrow
-                              Positioned(
-                                right: 8,
-                                bottom: 6,
-                                child: Transform.rotate(
-                                  angle: _is3DPerspective
-                                      ? 0.0
-                                      : (_headingDeg * math.pi / 180.0),
-                                  child: Container(
-                                    width: 42,
-                                    height: 42,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1E5EFF),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2.8,
-                                      ),
-                                      boxShadow: const <BoxShadow>[
-                                        BoxShadow(
-                                          color: Colors.black45,
-                                          blurRadius: 10,
-                                          offset: Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.navigation_rounded,
-                                      color: Colors.white,
-                                      size: 26,
-                                    ),
+                          width: 48,
+                          height: 48,
+                          child: Center(
+                            child: Transform.rotate(
+                              angle: _is3DPerspective
+                                  ? 0.0
+                                  : (_headingDeg * math.pi / 180.0),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E5EFF),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 3.0,
                                   ),
+                                  boxShadow: const <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.black45,
+                                      blurRadius: 10,
+                                      offset: Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.navigation_rounded,
+                                  color: Colors.white,
+                                  size: 26,
                                 ),
                               ),
-                              // 2GIS Circular Driver Avatar with Status Badge ("3")
-                              Positioned(
-                                left: 4,
-                                top: 4,
-                                child: Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: <Color>[
-                                        Color(0xFF3A506B),
-                                        Color(0xFF0B132B),
-                                      ],
-                                    ),
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 3.0,
-                                    ),
-                                    boxShadow: const <BoxShadow>[
-                                      BoxShadow(
-                                        color: Colors.black38,
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Stack(
-                                    clipBehavior: Clip.none,
-                                    children: <Widget>[
-                                      Center(
-                                        child: Icon(
-                                          Icons.directions_car_filled_rounded,
-                                          color: widget.isEyesOpen
-                                              ? const Color(0xFF00E676)
-                                              : CockpitColors.dangerRed,
-                                          size: 22,
-                                        ),
-                                      ),
-                                      Positioned(
-                                        right: -4,
-                                        bottom: -2,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 5,
-                                            vertical: 1,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF494F56),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 1.5,
-                                            ),
-                                          ),
-                                          child: const Text(
-                                            '3',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       ],
@@ -1986,22 +2180,22 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
               ),
             ),
 
-            // 8. 2GIS Search & Route Builder Sheet ("Откуда А -> Куда Б")
+            // 8. Authentic 2GIS Route Builder Card (Transport Tabs + Connected Откуда/Куда + Quick Places + Full-Width "В путь")
             if (_showRouteBuilderPanel)
               Positioned(
-                top: 86,
+                top: 76,
                 left: 12,
                 right: 12,
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: const <BoxShadow>[
                       BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 20,
-                        offset: Offset(0, 6),
+                        color: Color(0x3D000000),
+                        blurRadius: 28,
+                        offset: Offset(0, 10),
                       ),
                     ],
                   ),
@@ -2009,186 +2203,292 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
+                      // Top Drag Handle
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDDE1E6),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                      // 2GIS Car Header + Close Button (Only Car, no other transport!)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: <Widget>[
-                          const Text(
-                            'Маршрут 2ГИС (Точка А → Точка Б)',
-                            style: TextStyle(
-                              color: Color(0xFF1C1E21),
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F7E9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const <Widget>[
+                                Icon(
+                                  Icons.directions_car_filled_rounded,
+                                  color: Color(0xFF19AA1E),
+                                  size: 18,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'На автомобиле',
+                                  style: TextStyle(
+                                    color: Color(0xFF0E7A12),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           InkWell(
+                            borderRadius: BorderRadius.circular(16),
                             onTap: () => setState(
                                 () => _showRouteBuilderPanel = false),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              color: Color(0xFF8E9297),
-                              size: 20,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF2F3F5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                color: Color(0xFF5A6066),
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Authentic 2GIS Connected "Откуда -> Куда" Block with Swap Button
+                      Stack(
+                        alignment: Alignment.centerRight,
+                        children: <Widget>[
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFFE5E7EB),
+                                width: 1,
+                              ),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(12, 6, 48, 6),
+                            child: Column(
+                              children: <Widget>[
+                                // Point A ("Откуда")
+                                Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: const Color(0xFF1E5EFF),
+                                          width: 5,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 36,
+                                        child: TextField(
+                                          controller: _fromController,
+                                          style: const TextStyle(
+                                            color: Color(0xFF1C1E21),
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          onTap: () => setState(
+                                              () => _mapTapTarget = 'A'),
+                                          onSubmitted: (_) =>
+                                              _applyCustomRouteFromFields(),
+                                          decoration: InputDecoration(
+                                            hintText: 'Откуда (Моё местоположение)',
+                                            hintStyle: const TextStyle(
+                                              color: Color(0xFF8E9297),
+                                              fontSize: 13,
+                                            ),
+                                            isDense: true,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
+                                            border: InputBorder.none,
+                                            suffixIcon: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                              icon: const Icon(
+                                                Icons.cancel_rounded,
+                                                color: Color(0xFFB0B5BA),
+                                                size: 16,
+                                              ),
+                                              onPressed: () {
+                                                _fromController.clear();
+                                                setState(
+                                                    () => _mapTapTarget = 'A');
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Divider line with left vertical connector dots
+                                Row(
+                                  children: <Widget>[
+                                    SizedBox(
+                                      width: 18,
+                                      child: Column(
+                                        children: <Widget>[
+                                          Container(
+                                            width: 2,
+                                            height: 4,
+                                            color: const Color(0xFFBEC3C9),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Container(
+                                            width: 2,
+                                            height: 4,
+                                            color: const Color(0xFFBEC3C9),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Container(
+                                        height: 1,
+                                        color: const Color(0xFFE2E5E9),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Point B ("Куда")
+                                Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF19AA1E),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Icon(
+                                        Icons.flag_rounded,
+                                        color: Colors.white,
+                                        size: 11,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 36,
+                                        child: TextField(
+                                          controller: _toController,
+                                          style: const TextStyle(
+                                            color: Color(0xFF1C1E21),
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          onTap: () => setState(
+                                              () => _mapTapTarget = 'B'),
+                                          onSubmitted: (_) =>
+                                              _applyCustomRouteFromFields(),
+                                          decoration: InputDecoration(
+                                            hintText: 'Куда едем? (улица, ТРЦ, офис)',
+                                            hintStyle: const TextStyle(
+                                              color: Color(0xFF8E9297),
+                                              fontSize: 13,
+                                            ),
+                                            isDense: true,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
+                                            border: InputBorder.none,
+                                            suffixIcon: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                              icon: const Icon(
+                                                Icons.cancel_rounded,
+                                                color: Color(0xFFB0B5BA),
+                                                size: 16,
+                                              ),
+                                              onPressed: () {
+                                                _toController.clear();
+                                                setState(
+                                                    () => _mapTapTarget = 'B');
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Floating 2GIS Swap Circle Button (⇅)
+                          Positioned(
+                            right: 8,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: _swapPointsAandB,
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: const <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 6,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.swap_vert_rounded,
+                                  color: Color(0xFF1C1E21),
+                                  size: 20,
+                                ),
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      // Point A Field
-                      Row(
-                        children: <Widget>[
-                          Container(
-                            width: 26,
-                            height: 26,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF1E5EFF),
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: const Text(
-                              'А',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 38,
-                              child: TextField(
-                                controller: _fromController,
-                                style: const TextStyle(
-                                  color: Color(0xFF1C1E21),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                onTap: () =>
-                                    setState(() => _mapTapTarget = 'A'),
-                                onSubmitted: (_) =>
-                                    _applyCustomRouteFromFields(),
-                                decoration: InputDecoration(
-                                  hintText: 'Откуда (Точка А)',
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF3F4F6),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            onPressed: _swapPointsAandB,
-                            icon: const Icon(
-                              Icons.swap_vert_rounded,
-                              color: Color(0xFF1E5EFF),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Point B Field
-                      Row(
-                        children: <Widget>[
-                          Container(
-                            width: 26,
-                            height: 26,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF19AA1E),
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: const Text(
-                              'Б',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 38,
-                              child: TextField(
-                                controller: _toController,
-                                style: const TextStyle(
-                                  color: Color(0xFF1C1E21),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                onTap: () =>
-                                    setState(() => _mapTapTarget = 'B'),
-                                onSubmitted: (_) =>
-                                    _applyCustomRouteFromFields(),
-                                decoration: InputDecoration(
-                                  hintText: 'Куда (Точка Б — улица, ТРЦ, дом)',
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF3F4F6),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF19AA1E),
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(64, 38),
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            onPressed: _applyCustomRouteFromFields,
-                            child: const Text(
-                              'В путь',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Quick Preset Chips (Astana & Almaty)
+
+                      // 2GIS Quick Places Carousel (Icons + Full Street Names, never cut off)
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: _presets.map((_PresetPlace place) {
+                            final bool isSelected =
+                                _toController.text.contains(place.title) ||
+                                    _pointBLabel == place.title;
                             return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ActionChip(
-                                visualDensity: VisualDensity.compact,
-                                backgroundColor: const Color(0xFFF3F4F6),
-                                side: BorderSide.none,
-                                label: Text(
-                                  place.title,
-                                  style: const TextStyle(
-                                    color: Color(0xFF1C1E21),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                onPressed: () {
+                              padding: const EdgeInsets.only(right: 8),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
                                   setState(() {
                                     if (_mapTapTarget == 'A') {
                                       _pointA = place.coords;
@@ -2200,19 +2500,183 @@ class _LiveNavigationMapViewState extends State<LiveNavigationMapView> {
                                       _pointBLabel = place.title;
                                       _toController.text = place.title;
                                     }
-                                    _showRouteBuilderPanel = false;
-                                    _isNavigating = true;
-                                    _isFollowingCar = true;
                                   });
                                   _fetchRealRoadRoute(
                                     _pointA,
                                     _pointB,
-                                    announceVoice: true,
+                                    announceVoice: false,
+                                    startDrivingImmediately: false,
                                   );
                                 },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 7,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFFE8F7E9)
+                                        : const Color(0xFFF2F3F5),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF19AA1E)
+                                          : Colors.transparent,
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Icon(
+                                        Icons.place_rounded,
+                                        size: 14,
+                                        color: isSelected
+                                            ? const Color(0xFF19AA1E)
+                                            : const Color(0xFF1E5EFF),
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        place.title,
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? const Color(0xFF0E7A12)
+                                              : const Color(0xFF1C1E21),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             );
                           }).toList(),
+                        ),
+                      ),
+
+                      // Multiple 2GIS Route Options (Быстрый, Без пробок, Объезд)
+                      if (_routeVariants.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 10),
+                        Column(
+                          children: List<Widget>.generate(_routeVariants.length, (int vIdx) {
+                            final _RouteVariantOption variant = _routeVariants[vIdx];
+                            final bool isSelected = _selectedVariantIndex == vIdx;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => _selectRouteVariant(vIdx),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? const Color(0xFFF0FDF4) : const Color(0xFFF8F9FA),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isSelected ? const Color(0xFF19AA1E) : const Color(0xFFE5E7EB),
+                                      width: isSelected ? 2.0 : 1.0,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: <Widget>[
+                                      Container(
+                                        width: 20,
+                                        height: 20,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isSelected ? const Color(0xFF19AA1E) : Colors.transparent,
+                                          border: Border.all(
+                                            color: isSelected ? const Color(0xFF19AA1E) : const Color(0xFFB0B5BA),
+                                            width: 2,
+                                          ),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: isSelected
+                                            ? const Icon(Icons.check, size: 13, color: Colors.white)
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Row(
+                                              children: <Widget>[
+                                                Text(
+                                                  '${variant.etaMinutes} мин',
+                                                  style: TextStyle(
+                                                    color: isSelected ? const Color(0xFF0E7A12) : const Color(0xFF1C1E21),
+                                                    fontWeight: FontWeight.w900,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '• ${variant.title}',
+                                                  style: TextStyle(
+                                                    color: isSelected ? const Color(0xFF19AA1E) : const Color(0xFF5A6066),
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 12.5,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            Text(
+                                              '${_formatMeters(variant.distanceMeters)} • ${variant.subtitle}',
+                                              style: const TextStyle(
+                                                color: Color(0xFF8E9297),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+
+                      // Full-Width Official 2GIS Green "В путь" Action Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 46,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF19AA1E),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: _startDrivingSelectedRoute,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              const Icon(
+                                Icons.navigation_rounded,
+                                size: 20,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _isNavigating
+                                    ? 'Поездка активна • $_routeEtaMinutes мин'
+                                    : 'В путь • $_routeEtaMinutes мин ($_formattedDistanceKm км)',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
