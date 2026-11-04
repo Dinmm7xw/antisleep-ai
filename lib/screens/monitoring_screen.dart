@@ -11,16 +11,23 @@ import '../services/mlkit_image_converter.dart';
 import '../services/web_face_bridge.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
+import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/live_navigation_map_view.dart';
 import '../widgets/painters/face_mesh_overlay_painter.dart';
 import 'danger_alert_screen.dart';
+import 'home_screen.dart';
 import 'summary_screen.dart';
 
 /// Screen 2: Active Monitoring HUD + Interactive GPS Map + Background Mode / PiP Support.
 /// Works on BOTH Android/iOS (Google ML Kit FaceDetector + Native PiP) AND Flutter Web
 /// Chrome/Edge (MediaPipe 468-Landmark Web Bridge + Background Timer + Browser PiP).
 class MonitoringScreen extends StatefulWidget {
-  const MonitoringScreen({super.key});
+  final bool initialMapMode;
+
+  const MonitoringScreen({
+    super.key,
+    this.initialMapMode = false,
+  });
 
   @override
   State<MonitoringScreen> createState() => _MonitoringScreenState();
@@ -76,6 +83,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
   @override
   void initState() {
     super.initState();
+    _isPipOverlayMode = widget.initialMapMode;
     WidgetsBinding.instance.addObserver(this);
     if (!kIsWeb) {
       _initFaceDetector();
@@ -544,6 +552,22 @@ class _MonitoringScreenState extends State<MonitoringScreen>
             ),
           ],
         ),
+      ),
+      bottomNavigationBar: CockpitBottomNavBar(
+        currentIndex: _isPipOverlayMode ? 2 : 1,
+        onTabSelected: (int index) {
+          if (index == 1) {
+            setState(() => _isPipOverlayMode = false);
+          } else if (index == 2) {
+            setState(() => _isPipOverlayMode = true);
+          } else if (index == 0) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+            );
+          } else if (index == 3) {
+            _stopTripAndNavigateToSummary();
+          }
+        },
       ),
       body: SafeArea(
         child: Padding(

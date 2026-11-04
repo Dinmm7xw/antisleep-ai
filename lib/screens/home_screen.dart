@@ -10,6 +10,7 @@ import '../services/siren_wav_generator.dart';
 import '../services/web_face_bridge.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
+import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/dashboard_illustration_painter.dart';
 import 'monitoring_screen.dart';
 
@@ -265,6 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             : null,
       ),
+      bottomNavigationBar: const CockpitBottomNavBar(currentIndex: 0),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

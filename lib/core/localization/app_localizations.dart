@@ -74,6 +74,10 @@ class AppLocalizations {
       'turnLeft': 'Солға бұрылыңыз',
       'turnRight': 'Оңға бұрылыңыз',
       'goStraight': 'Тіке жүріңіз',
+      'navHome': 'Басты',
+      'navMonitor': 'Бақылау',
+      'navMap': 'Карта',
+      'navSummary': 'Нәтиже',
     },
     'ru': <String, String>{
       'appTitle': 'AntiSleep AI',
@@ -147,6 +151,10 @@ class AppLocalizations {
       'turnLeft': 'Поверните налево',
       'turnRight': 'Поверните направо',
       'goStraight': 'Двигайтесь прямо',
+      'navHome': 'Главная',
+      'navMonitor': 'Камера ИИ',
+      'navMap': 'Карта',
+      'navSummary': 'Сводка',
     },
     'en': <String, String>{
       'appTitle': 'AntiSleep AI',
@@ -219,6 +227,10 @@ class AppLocalizations {
       'turnLeft': 'Turn left',
       'turnRight': 'Turn right',
       'goStraight': 'Continue straight',
+      'navHome': 'Home',
+      'navMonitor': 'AI Camera',
+      'navMap': 'Map',
+      'navSummary': 'Summary',
     },
   };
 

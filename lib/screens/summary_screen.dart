@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../core/theme/cockpit_colors.dart';
 import '../state/app_session_state.dart';
 import '../widgets/cockpit_app_bar.dart';
+import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/radial_safety_score_painter.dart';
 import 'home_screen.dart';
 
@@ -131,6 +132,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
     return Scaffold(
       appBar: const CockpitAppBar(),
+      bottomNavigationBar: const CockpitBottomNavBar(currentIndex: 3),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
