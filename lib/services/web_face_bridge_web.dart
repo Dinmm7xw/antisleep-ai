@@ -59,6 +59,9 @@ external void _jsStartWebSiren();
 @JS('_antiSleepStopWebSiren')
 external void _jsStopWebSiren();
 
+@JS('_antiSleepSpeakNav')
+external void _jsSpeakNav(JSString text);
+
 /// Web implementation reading MediaPipe 468-Landmark telemetry, HTML5 GPS, Yandex Maps 2.1 JS API, and Web PiP.
 class WebFaceBridge {
   static final Set<String> _registeredViews = <String>{};
@@ -242,6 +245,12 @@ class WebFaceBridge {
   static void stopWebSiren() {
     try {
       _jsStopWebSiren();
+    } catch (_) {}
+  }
+
+  static void speakNavigationInstruction(String text) {
+    try {
+      _jsSpeakNav(text.toJS);
     } catch (_) {}
   }
 }

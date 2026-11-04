@@ -69,4 +69,5 @@ class WebFaceBridge {
   static Offset? pollClickedYandexCoords() => null;
   static void startWebSiren() {}
   static void stopWebSiren() {}
+  static void speakNavigationInstruction(String text) {}
 }

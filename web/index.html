@@ -255,6 +255,19 @@
       } catch (e) {}
     };
 
+    // Built-in Navigator Voice Guidance (Web Speech API TTS)
+    window._antiSleepSpeakNav = function(text) {
+      try {
+        if (!("speechSynthesis" in window)) return;
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = "ru-RU";
+        utter.rate = 1.05;
+        utter.pitch = 1.0;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {}
+    };
+
     // Real Yandex Maps 2.1 Interactive Instance + Live Traffic (Пробки) + Route Polyline Bridge
     window._antiSleepYandexMap = null;
     window._antiSleepYandexRouteLine = null;
