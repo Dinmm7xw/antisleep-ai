@@ -1,7 +1,8 @@
 {
   "version": 2,
-  "outputDirectory": "build/web",
   "framework": null,
+  "buildCommand": "bash vercel-build.sh",
+  "outputDirectory": "build/web",
   "rewrites": [
     {
       "source": "/(.*)",
@@ -20,4 +21,3 @@
     }
   ]
 }
-

@@ -55,3 +55,4 @@ app.*.map.json
 **/linux/flutter/
 .vercel
 .env*
+_flutter/

@@ -1,0 +1,9 @@
+{
+  "name": "antisleep-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AntiSleep AI — Automated Web Build for Vercel",
+  "scripts": {
+    "build": "bash vercel-build.sh"
+  }
+}
