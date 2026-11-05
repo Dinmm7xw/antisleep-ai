@@ -339,9 +339,9 @@ class _AiCopilotHudSheetState extends State<_AiCopilotHudSheet> {
 
           const Divider(color: CockpitColors.cardBorder, height: 1),
 
-          // Message Stream Area
+          // Message Stream Area with Real-Time Live Speech Bubbles
           Expanded(
-            child: messages.isEmpty
+            child: (messages.isEmpty && aiCopilotService.interimSpeech.isEmpty)
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -354,10 +354,10 @@ class _AiCopilotHudSheetState extends State<_AiCopilotHudSheet> {
                         const SizedBox(height: 12),
                         Text(
                           currentLang == 'ru'
-                              ? 'Скажите что-нибудь или выберите тему ниже'
+                              ? 'Говорите прямо сейчас, микрофон вас слушает...'
                               : currentLang == 'en'
-                                  ? 'Say something or pick an action below'
-                                  : 'Сөйлеңіз немесе төмендегі тақырыпты таңдаңыз',
+                                  ? 'Speak right now, the microphone is listening...'
+                                  : 'Сөйлеңіз, микрофон сізді нақты уақытта тыңдап тұр...',
                           style: const TextStyle(
                             color: CockpitColors.textMuted,
                             fontSize: 13,
@@ -370,10 +370,13 @@ class _AiCopilotHudSheetState extends State<_AiCopilotHudSheet> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(14),
-                    itemCount: messages.length,
+                    itemCount: messages.length + (aiCopilotService.interimSpeech.isNotEmpty ? 1 : 0),
                     itemBuilder: (BuildContext ctx, int i) {
-                      final AiVoiceMessage m = messages[i];
-                      return _buildMessageBubble(m);
+                      if (i < messages.length) {
+                        return _buildMessageBubble(messages[i]);
+                      } else {
+                        return _buildInterimBubble(aiCopilotService.interimSpeech);
+                      }
                     },
                   ),
           ),
@@ -511,6 +514,57 @@ class _AiCopilotHudSheetState extends State<_AiCopilotHudSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildInterimBubble(String interim) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.82,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2563EB).withValues(alpha: 0.55),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(4),
+          ),
+          border: Border.all(
+            color: const Color(0xFF60A5FA),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                interim,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

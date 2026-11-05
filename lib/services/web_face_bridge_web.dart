@@ -99,6 +99,9 @@ external JSString? get _jsLatestSpeechInput;
 @JS('_antiSleepLatestSpeechInput')
 external set _jsLatestSpeechInput(JSString? value);
 
+@JS('_antiSleepInterimSpeechInput')
+external JSString? get _jsInterimSpeechInput;
+
 @JS('_antiSleepIsListening')
 external JSBoolean? get _jsIsListening;
 
@@ -378,6 +381,17 @@ class WebFaceBridge {
       return _jsIsListening?.toDart ?? false;
     } catch (_) {
       return false;
+    }
+  }
+
+  static String? pollInterimSpeechInput() {
+    try {
+      final JSString? raw = _jsInterimSpeechInput;
+      if (raw == null) return null;
+      final String s = raw.toDart;
+      return s.isNotEmpty ? s : null;
+    } catch (_) {
+      return null;
     }
   }
 

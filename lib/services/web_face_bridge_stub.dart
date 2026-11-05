@@ -89,4 +89,5 @@ class WebFaceBridge {
   static void stopListening() {}
   static bool isListening() => false;
   static String? pollLatestSpeechInput() => null;
+  static String? pollInterimSpeechInput() => null;
 }
