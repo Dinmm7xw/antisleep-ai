@@ -12,6 +12,8 @@ enum QuickCopilotAction {
   funnyJoke,
   fatigueAdvice,
   checkIn,
+  proverbsGame,
+  riddlesGame,
 }
 
 class AiVoiceMessage {
@@ -274,6 +276,22 @@ class AiVoiceCopilotService extends ChangeNotifier {
           playAudio: () => KazakhVoiceAudio.playPraiseDriving(),
         );
         break;
+
+      case QuickCopilotAction.proverbsGame:
+        _respondHuman(
+          kk: 'Мақалды жалғастырыңыз: «Еңбек түбі — ...»? Жауабыңызды айтыңыз!',
+          ru: 'Продолжите пословицу: «Труд человека кормит, а лень — ...»? Жду ваш ответ!',
+          en: 'Finish the proverb: Actions speak louder than — ...? What is the word?',
+        );
+        break;
+
+      case QuickCopilotAction.riddlesGame:
+        _respondHuman(
+          kk: 'Жұмбақ: «Қос шекті, бір тиекті, үні тәтті, жүрекке жетіп жатты». Бұл не? Тауып көріңізші!',
+          ru: 'Загадка: «Два конца, два кольца, а посередине гвоздик». Что это? Отгадайте!',
+          en: 'Riddle: What gets wetter the more it dries? Try to guess!',
+        );
+        break;
     }
   }
 
@@ -354,6 +372,101 @@ class AiVoiceCopilotService extends ChangeNotifier {
         kk: 'Қазіргі нақты уақыт: сағат $timeStr. ${now.hour >= 23 || now.hour < 6 ? 'Түнгі уақыт – ұйқының ең қауіпті мезгілі, сергек болыңыз!' : 'Күндізгі уақытта жақсы әрі қауіпсіз сапар тілеймін!'}',
         ru: 'Текущее время: $timeStr. ${now.hour >= 23 || now.hour < 6 ? 'Ночное время требует максимальной концентрации за рулем!' : 'Счастливой и бодрой дневной поездки!'}',
         en: 'The current time is $timeStr. Stay alert and drive safely!',
+      );
+      return;
+    }
+
+    // 7.5 Proverbs / Riddles games triggers and checks
+    if (clean.contains('мақал') ||
+        clean.contains('мәтел') ||
+        clean.contains('жалғастыр') ||
+        clean.contains('пословиц') ||
+        clean.contains('поговорк') ||
+        clean.contains('proverb')) {
+      triggerQuickAction(QuickCopilotAction.proverbsGame);
+      return;
+    }
+
+    if (clean.contains('береке') ||
+        clean.contains('зейнет') ||
+        clean.contains('порт') ||
+        clean.contains('портить') ||
+        clean.contains('words')) {
+      _respondHuman(
+        kk: 'Өте дұрыс, бәрекелді! «Еңбек түбі — береке»! Келесі мақал: «Отан — ...» неден басталады?',
+        ru: 'Отлично! Абсолютно верно! Труд кормит, а лень портит! Ваша память в полном порядке!',
+        en: 'Spot on! Actions speak louder than words! Great mental focus!',
+      );
+      return;
+    }
+
+    if (clean.contains('отбасы') || clean.contains('семь')) {
+      _respondHuman(
+        kk: 'Жарайсыз! Дұрыс: «Отан — отбасынан басталады». Келесі мақал: «Көз қорқақ, ...»?',
+        ru: 'Правильно! Семья — основа всего. Отличный ответ!',
+        en: 'Correct! Home is where the family begins. Well done!',
+      );
+      return;
+    }
+
+    if (clean.contains('қол батыр') || clean.contains('батыр')) {
+      _respondHuman(
+        kk: 'Керемет! «Көз қорқақ, қол батыр». Сіз мақал-мәтелдерге өте жүйрік екенсіз, ұйқыңыз да ашылып қалды!',
+        ru: 'Браво! Глаза боятся, а руки делают! Бодрость на высшем уровне!',
+        en: 'Superb! Fear makes things look bigger than they are. Great energy!',
+      );
+      return;
+    }
+
+    if (clean.contains('жұмбақ') ||
+        clean.contains('загадк') ||
+        clean.contains('отгадай') ||
+        clean.contains('riddle')) {
+      triggerQuickAction(QuickCopilotAction.riddlesGame);
+      return;
+    }
+
+    if (clean.contains('домбыра') ||
+        clean.contains('ножниц') ||
+        clean.contains('қайшы') ||
+        clean.contains('towel') ||
+        clean.contains('сүлгі')) {
+      _respondHuman(
+        kk: 'Дәл таптыңыз! Бұл қасиетті — Домбыра! Келесі жұмбақ: «Күндіз де, түнде де тық-тық етіп тоқтамайды». Бұл не?',
+        ru: 'Браво! Правильный ответ! Ваш ум работает со скоростью света!',
+        en: 'Brilliant! You nailed it! Your cognitive focus is razor sharp!',
+      );
+      return;
+    }
+
+    if (clean.contains('сағат') || clean.contains('час')) {
+      _respondHuman(
+        kk: 'Тамаша! Бұл — сағат! Уақытыңыз бағалы, жолыңыз қауіпсіз болсын! Тағы сұрақ қоя беріңіз!',
+        ru: 'Правильно! Это часы! Время дорого, а ваша безопасность на дороге важнее всего!',
+        en: 'Spot on, that is a clock! Safe driving!',
+      );
+      return;
+    }
+
+    if (clean.contains('56') ||
+        clean.contains('елу алты') ||
+        clean.contains('пятьдесят шесть') ||
+        clean.contains('fifty six')) {
+      _respondHuman(
+        kk: 'Жарайсыз! 7 көбейту 8 тең 56! Есептеу қабілетіңіз өте жылдам!',
+        ru: 'Точно! 7 на 8 будет 56! Отличный счет в уме!',
+        en: 'Exactly! 7 times 8 is 56! Great math skills!',
+      );
+      return;
+    }
+
+    if (clean.contains('62') ||
+        clean.contains('алпыс екі') ||
+        clean.contains('шестьдесят два')) {
+      _respondHuman(
+        kk: 'Дұрыс! 25 қосу 37 тең 62! Миыңыз сергек күйде!',
+        ru: 'Верно! 25 плюс 37 равно 62! Мозг полностью включен!',
+        en: 'Correct! 25 plus 37 is 62! Fully alert!',
       );
       return;
     }
