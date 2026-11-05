@@ -258,9 +258,11 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         _webFaceData = data;
         if (data != null && data.faceFound) {
           _lastFaceDetectedAt = DateTime.now();
-          final double thresh = appState.effectiveEarThreshold;
-          final double closedCutoff = thresh - 0.040; // ~0.115
-          final double openCutoff = thresh + 0.030;   // ~0.185
+          final double thresh = _userOpenEarBaseline > 0.11
+              ? (_userOpenEarBaseline * 0.70).clamp(0.10, 0.16)
+              : appState.effectiveEarThreshold;
+          final double closedCutoff = thresh - 0.035;
+          final double openCutoff = thresh + 0.025;
           final double dynamicProb = ((data.ear - closedCutoff) / (openCutoff - closedCutoff)).clamp(0.05, 0.98);
 
           _evaluateRealBiometrics(
@@ -351,7 +353,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     final DateTime now = DateTime.now();
 
     // 1. Smart Continuous Auto-Baseline Calibration (Adapts to Asian/almond and all eye shapes)
-    if (bio.ear > 0.13 && bio.headPitchX.abs() < 22.0 && bio.headYawY.abs() < 25.0) {
+    if (bio.ear > 0.10 && bio.headPitchX.abs() < 42.0 && bio.headYawY.abs() < 42.0) {
       if (_baselineSampleCount < 60) {
         if (_userOpenEarBaseline == 0.0) {
           _userOpenEarBaseline = bio.ear;
@@ -364,8 +366,8 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       }
     }
 
-    final double activeThreshold = _userOpenEarBaseline > 0.13
-        ? (_userOpenEarBaseline * 0.76).clamp(0.12, 0.22)
+    final double activeThreshold = _userOpenEarBaseline > 0.10
+        ? (_userOpenEarBaseline * 0.70).clamp(0.10, 0.16)
         : appState.effectiveEarThreshold;
 
     final double closedCutoff = activeThreshold - 0.035;
@@ -525,8 +527,8 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         (_webFaceData != null && _webFaceData!.faceFound);
     final double avgEyeOpen =
         ((_leftEyeProb + _rightEyeProb) / 2.0).clamp(0.0, 1.0);
-    final double threshold = _userOpenEarBaseline > 0.13
-        ? (_userOpenEarBaseline * 0.76).clamp(0.12, 0.22)
+    final double threshold = _userOpenEarBaseline > 0.10
+        ? (_userOpenEarBaseline * 0.70).clamp(0.10, 0.16)
         : appState.effectiveEarThreshold;
     final bool isEyesOpen = _liveEar >= threshold;
     final int eyeOpenPct = (avgEyeOpen * 100).round();

@@ -189,25 +189,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(color: CockpitColors.textMuted, fontSize: 12),
                   ),
                   Slider(
-                    value: _earThreshold,
-                    min: 0.12,
-                    max: 0.22,
+                    value: _earThreshold.clamp(0.10, 0.20),
+                    min: 0.10,
+                    max: 0.20,
                     divisions: 10,
                     activeColor: const Color(0xFF19AA1E),
                     inactiveColor: const Color(0xFF2C3238),
                     onChanged: (double val) {
                       setState(() {
                         _earThreshold = val;
-                        appState.setPersonalEarOffset(val - 0.155);
+                        appState.setPersonalEarOffset(val - 0.130);
                       });
                     },
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: const <Widget>[
-                      Text('0.18 (Узкие / Очки)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
-                      Text('0.25 (Стандарт)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
-                      Text('0.32 (Широкие)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
+                      Text('0.10 (Азиялық / Қысық)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
+                      Text('0.13 (Орташа)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
+                      Text('0.18 (Үлкен көз)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
                     ],
                   ),
                 ],
