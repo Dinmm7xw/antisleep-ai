@@ -918,10 +918,10 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                           ),
 
                         // Floating Futuristic AI Voice Co-Pilot Hologram Orb (Alice / Siri / AntiSleep)
-                        const Positioned(
-                          bottom: 56,
+                        Positioned(
+                          bottom: _isPipOverlayMode ? 92 : 62,
                           right: 14,
-                          child: AiCopilotOrbWidget(),
+                          child: const AiCopilotOrbWidget(),
                         ),
                       ],
                     ),

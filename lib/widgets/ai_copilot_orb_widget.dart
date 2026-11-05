@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../core/theme/cockpit_colors.dart';
 import '../services/ai_voice_copilot_service.dart';
 
-/// Pure Hands-Free Siri / Alice style Voice Assistant Capsule.
-/// Activated automatically when the driver says «Антислип» (or «Antisleep»).
-/// No clicking, no bulky chat modals — 100% natural verbal in-car conversation.
+/// Luxury Siri / Alice style AI Voice Hologram Orb.
+/// Compact 46x46 circular sphere with neon audio aura and non-intrusive floating voice toast.
 class AiCopilotOrbWidget extends StatefulWidget {
   const AiCopilotOrbWidget({super.key});
 
@@ -15,17 +13,16 @@ class AiCopilotOrbWidget extends StatefulWidget {
 
 class _AiCopilotOrbWidgetState extends State<AiCopilotOrbWidget>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _waveController;
+  late final AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
-    _waveController = AnimationController(
+    _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
 
-    // Automatically ensure continuous background hands-free listening is running
     WidgetsBinding.instance.addPostFrameCallback((_) {
       aiCopilotService.ensureAutoListening();
     });
@@ -40,13 +37,12 @@ class _AiCopilotOrbWidgetState extends State<AiCopilotOrbWidget>
   @override
   void dispose() {
     aiCopilotService.removeListener(_onServiceUpdate);
-    _waveController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
-  void _handleManualWakeTap() {
-    HapticFeedback.mediumImpact();
-    // Tapping also wakes it up as an optional shortcut, but voice "Антислип" works 100% hands-free!
+  void _handleTap() {
+    HapticFeedback.selectionClick();
     aiCopilotService.handleUserSpeech('Антислип');
   }
 
@@ -55,175 +51,159 @@ class _AiCopilotOrbWidgetState extends State<AiCopilotOrbWidget>
     final bool isDialogueActive = aiCopilotService.isDialogueActive;
     final bool isSpeaking = aiCopilotService.isSpeaking;
     final bool hasInterim = aiCopilotService.interimSpeech.isNotEmpty;
-    final String statusText = aiCopilotService.activeStatusText;
-    final String lastAi = aiCopilotService.lastAiResponse;
     final String liveInterim = aiCopilotService.interimSpeech;
+    final String lastAi = aiCopilotService.lastAiResponse;
 
-    final bool isExpanded = isDialogueActive || isSpeaking || hasInterim;
+    final bool showVoiceToast = (isDialogueActive || isSpeaking || hasInterim) &&
+        (hasInterim || (isSpeaking && lastAi.isNotEmpty));
 
     return AnimatedBuilder(
-      animation: _waveController,
+      animation: _pulseController,
       builder: (BuildContext context, _) {
-        final double wave = _waveController.value;
+        final double pulse = _pulseController.value;
 
-        return GestureDetector(
-          onTap: _handleManualWakeTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            padding: EdgeInsets.symmetric(
-              horizontal: isExpanded ? 16 : 12,
-              vertical: isExpanded ? 10 : 8,
-            ),
-            constraints: BoxConstraints(
-              maxWidth: isExpanded ? 340 : 180,
-              minHeight: 44,
-            ),
-            decoration: BoxDecoration(
-              color: isExpanded
-                  ? const Color(0xFF0F172A).withValues(alpha: 0.94)
-                  : const Color(0xFF1E293B).withValues(alpha: 0.88),
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(
-                color: isSpeaking
-                    ? const Color(0xFF00F5D4)
-                    : isExpanded
-                        ? const Color(0xFF7209B7)
-                        : CockpitColors.cardBorder,
-                width: isExpanded ? 2.0 : 1.2,
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: isSpeaking
-                      ? const Color(0xFF00F5D4).withValues(alpha: 0.35 + 0.2 * wave)
-                      : isExpanded
-                          ? const Color(0xFF7209B7).withValues(alpha: 0.4 + 0.2 * wave)
-                          : Colors.black.withValues(alpha: 0.4),
-                  blurRadius: isExpanded ? 16 : 8,
-                  spreadRadius: isExpanded ? 2 : 0,
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                // Glowing Animated Siri/Alice Hologram Sphere
-                Container(
-                  width: 30,
-                  height: 30,
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            // Elegant Frosted Glass Voice Subtitle (appears only while speaking / listening)
+            if (showVoiceToast)
+              Flexible(
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  constraints: const BoxConstraints(maxWidth: 220),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: isSpeaking
-                          ? const <Color>[Color(0xFF00F5D4), Color(0xFF00BBF9)]
-                          : isExpanded
-                              ? const <Color>[Color(0xFF7209B7), Color(0xFFF72585)]
-                              : const <Color>[Color(0xFF334155), Color(0xFF0EA5E9)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                    color: const Color(0xFF0F172A).withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSpeaking
+                          ? const Color(0xFF00F5D4).withValues(alpha: 0.6)
+                          : const Color(0xFF7209B7).withValues(alpha: 0.6),
+                      width: 1.0,
                     ),
                     boxShadow: <BoxShadow>[
-                      if (isExpanded)
-                        BoxShadow(
-                          color: isSpeaking
-                              ? const Color(0xFF00F5D4)
-                              : const Color(0xFFF72585),
-                          blurRadius: 8 * wave,
-                        ),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
                     ],
                   ),
-                  child: Center(
-                    child: Icon(
-                      isSpeaking
-                          ? Icons.volume_up_rounded
-                          : isExpanded
-                              ? Icons.mic_rounded
-                              : Icons.mic_none_rounded,
-                      size: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-
-                // Live Conversational Status & Speech Subtitle
-                Flexible(
-                  child: Column(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Text(
-                            statusText,
-                            style: TextStyle(
-                              color: isSpeaking
-                                  ? const Color(0xFF00F5D4)
-                                  : isExpanded
-                                      ? const Color(0xFFF72585)
-                                      : CockpitColors.textWhite,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                          if (isExpanded) ...<Widget>[
-                            const SizedBox(width: 6),
-                            // Mini audio equalizer bars
-                            _buildAudioEqualizer(wave, isSpeaking),
-                          ],
-                        ],
-                      ),
-                      if (hasInterim) ...<Widget>[
-                        const SizedBox(height: 2),
-                        Text(
-                          liveInterim,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontStyle: FontStyle.italic,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ] else if (isSpeaking && lastAi.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 2),
-                        Text(
-                          lastAi,
+                      _buildEqualizerMini(pulse, isSpeaking),
+                      const SizedBox(width: 7),
+                      Flexible(
+                        child: Text(
+                          hasInterim ? liveInterim : lastAi,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: Colors.white,
                             fontSize: 11,
+                            fontStyle: hasInterim ? FontStyle.italic : FontStyle.normal,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
-              ],
+              ),
+
+            // Ultra-Compact Siri / Alice Glowing Orb (46x46)
+            GestureDetector(
+              onTap: _handleTap,
+              child: Stack(
+                alignment: Alignment.center,
+                children: <Widget>[
+                  // Pulsing Holographic Glow Ring
+                  if (isDialogueActive || isSpeaking)
+                    Container(
+                      width: 48 + (6.0 * pulse),
+                      height: 48 + (6.0 * pulse),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: isSpeaking
+                                ? const Color(0xFF00F5D4).withValues(alpha: 0.5)
+                                : const Color(0xFF7209B7).withValues(alpha: 0.55),
+                            blurRadius: 12 + (6.0 * pulse),
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Metallic Obsidian Spherical Core
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: isSpeaking
+                            ? const <Color>[Color(0xFF00F5D4), Color(0xFF00BBF9)]
+                            : isDialogueActive
+                                ? const <Color>[Color(0xFF7209B7), Color(0xFFF72585)]
+                                : const <Color>[Color(0xFF1E293B), Color(0xFF0F172A)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(
+                        color: isSpeaking
+                            ? const Color(0xFF00F5D4)
+                            : isDialogueActive
+                                ? const Color(0xFFF72585)
+                                : Colors.white24,
+                        width: 1.8,
+                      ),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Colors.black54,
+                          blurRadius: 8,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        isSpeaking
+                            ? Icons.volume_up_rounded
+                            : isDialogueActive
+                                ? Icons.mic_rounded
+                                : Icons.auto_awesome,
+                        color: isSpeaking || isDialogueActive
+                            ? Colors.white
+                            : const Color(0xFF38BDF8),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildAudioEqualizer(double wave, bool isSpeaking) {
+  Widget _buildEqualizerMini(double pulse, bool isSpeaking) {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: List<Widget>.generate(3, (int index) {
-        final double height = 4.0 + (index == 1 ? 10.0 * wave : 7.0 * (1.0 - wave));
+      children: List<Widget>.generate(3, (int i) {
+        final double h = 4.0 + (i == 1 ? 8.0 * pulse : 6.0 * (1.0 - pulse));
         return Container(
-          width: 2.5,
-          height: height,
-          margin: const EdgeInsets.symmetric(horizontal: 1.2),
+          width: 2,
+          height: h,
+          margin: const EdgeInsets.symmetric(horizontal: 1),
           decoration: BoxDecoration(
             color: isSpeaking ? const Color(0xFF00F5D4) : const Color(0xFFF72585),
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: BorderRadius.circular(1),
           ),
         );
       }),
