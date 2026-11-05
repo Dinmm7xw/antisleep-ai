@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:camera/camera.dart';
@@ -63,6 +64,8 @@ class _MonitoringScreenState extends State<MonitoringScreen>
   double _liveMar = 0.14;
   double _headPitch = 0.0;
   double _headYaw = 0.0;
+  double _userOpenEarBaseline = 0.0;
+  int _baselineSampleCount = 0;
 
   // Continuous Timers for Micro-Sleep (> 1.5s), Yawn (> 2.0s), Blink, Head Nod (> 1.8s)
   DateTime? _eyesClosedSince;
@@ -346,17 +349,37 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     if (!mounted || _isAlarmRouteOpen) return;
 
     final DateTime now = DateTime.now();
-    _leftEyeProb = bio.leftEyeOpenProb;
-    _rightEyeProb = bio.rightEyeOpenProb;
+
+    // 1. Smart Continuous Auto-Baseline Calibration (Adapts to Asian/almond and all eye shapes)
+    if (bio.ear > 0.13 && bio.headPitchX.abs() < 22.0 && bio.headYawY.abs() < 25.0) {
+      if (_baselineSampleCount < 60) {
+        if (_userOpenEarBaseline == 0.0) {
+          _userOpenEarBaseline = bio.ear;
+        } else {
+          _userOpenEarBaseline = math.max(_userOpenEarBaseline, bio.ear);
+        }
+        _baselineSampleCount++;
+      } else if (bio.ear > _userOpenEarBaseline) {
+        _userOpenEarBaseline = (_userOpenEarBaseline * 0.96) + (bio.ear * 0.04);
+      }
+    }
+
+    final double activeThreshold = _userOpenEarBaseline > 0.13
+        ? (_userOpenEarBaseline * 0.76).clamp(0.12, 0.22)
+        : appState.effectiveEarThreshold;
+
+    final double closedCutoff = activeThreshold - 0.035;
+    final double openCutoff = activeThreshold + 0.025;
+    final double dynamicProb = ((bio.ear - closedCutoff) / (openCutoff - closedCutoff)).clamp(0.05, 0.98);
+
+    _leftEyeProb = dynamicProb;
+    _rightEyeProb = dynamicProb;
     _liveEar = bio.ear;
     _liveMar = bio.mar;
     _headPitch = bio.headPitchX;
     _headYaw = bio.headYawY;
 
-    final double threshold = appState.effectiveEarThreshold;
-    final bool eyesClosed =
-        (bio.leftEyeOpenProb < 0.25 && bio.rightEyeOpenProb < 0.25) ||
-            bio.ear < threshold;
+    final bool eyesClosed = bio.ear < activeThreshold;
 
     appState.recordBiometricFrame(ear: bio.ear, eyesClosed: eyesClosed);
 
@@ -502,8 +525,10 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         (_webFaceData != null && _webFaceData!.faceFound);
     final double avgEyeOpen =
         ((_leftEyeProb + _rightEyeProb) / 2.0).clamp(0.0, 1.0);
-    final double threshold = appState.effectiveEarThreshold;
-    final bool isEyesOpen = avgEyeOpen >= 0.25 && _liveEar >= threshold;
+    final double threshold = _userOpenEarBaseline > 0.13
+        ? (_userOpenEarBaseline * 0.76).clamp(0.12, 0.22)
+        : appState.effectiveEarThreshold;
+    final bool isEyesOpen = _liveEar >= threshold;
     final int eyeOpenPct = (avgEyeOpen * 100).round();
 
     final int closedElapsedMs = _eyesClosedSince != null
