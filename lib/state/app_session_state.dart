@@ -112,16 +112,16 @@ class AppSessionState extends ChangeNotifier {
     double base;
     switch (sensitivityMode) {
       case SensitivityMode.city:
-        base = 0.145; // City / Gentle Mode (triggers only on true deep eye closure < 0.145)
+        base = 0.120; // City / Gentle Mode (triggers only on true deep eye closure < 0.120)
         break;
       case SensitivityMode.highway:
-        base = 0.155; // Highway Standard Mode (safely below 0.19, triggers on real closure < 0.155)
+        base = 0.130; // Highway Standard Mode (triggers on real closure < 0.130)
         break;
       case SensitivityMode.strict:
-        base = 0.170; // Strict Alert Mode (< 0.170)
+        base = 0.145; // Strict Alert Mode (< 0.145)
         break;
     }
-    return (base + personalEarOffset).clamp(0.12, 0.24);
+    return (base + personalEarOffset).clamp(0.10, 0.20);
   }
 
   /// PERCLOS: Percentage of time eyes were closed over the trip
