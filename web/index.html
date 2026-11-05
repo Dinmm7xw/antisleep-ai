@@ -619,6 +619,25 @@
         }
       } catch (e) {}
     };
+
+    // Driver Profile Persistence in Web LocalStorage
+    window._antiSleepSaveDriver = function(json) {
+      try {
+        if (json) {
+          localStorage.setItem('antisleep_driver_profile', json);
+        } else {
+          localStorage.removeItem('antisleep_driver_profile');
+        }
+      } catch (e) {}
+    };
+
+    window._antiSleepLoadDriver = function() {
+      try {
+        return localStorage.getItem('antisleep_driver_profile') || '';
+      } catch (e) {
+        return '';
+      }
+    };
   </script>
 </head>
 <body>
