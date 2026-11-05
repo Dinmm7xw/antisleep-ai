@@ -258,7 +258,11 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         _webFaceData = data;
         if (data != null && data.faceFound) {
           _lastFaceDetectedAt = DateTime.now();
-          final double thresh = math.min((_userOpenEarBaseline > 0.09 ? _userOpenEarBaseline : 0.19) * 0.58, 0.120);
+          final double baseline = _userOpenEarBaseline > 0.12 ? _userOpenEarBaseline : 0.24;
+          final double dropRatio = appState.sensitivityMode == SensitivityMode.strict
+              ? 0.72
+              : (appState.sensitivityMode == SensitivityMode.city ? 0.58 : 0.65);
+          final double thresh = (baseline * dropRatio + appState.personalEarOffset).clamp(0.10, 0.26);
           final double closedCutoff = thresh - 0.025;
           final double openCutoff = thresh + 0.025;
           final double dynamicProb = ((data.ear - closedCutoff) / (openCutoff - closedCutoff)).clamp(0.05, 0.98);
@@ -293,7 +297,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       if (_eyesClosedSince != null && !_isAlarmRouteOpen) {
         final int closedMs =
             DateTime.now().difference(_eyesClosedSince!).inMilliseconds;
-        if (closedMs >= 1500) {
+        if (closedMs >= 1350) {
           _eyesClosedSince = null;
           _triggerDangerAlert();
         } else {
@@ -350,25 +354,36 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
     final DateTime now = DateTime.now();
 
-    // 1. Pure AI Adaptive Eye Baseline Tracking (Adapts instantly to any eye shape)
+    // 1. Dynamic Auto-Adaptation to Driver's Eye Anatomy (Asian vs European vs Glasses)
     if (bio.ear > 0.08) {
-      if (_baselineSampleCount < 90) {
+      if (_baselineSampleCount < 30) {
+        // Fast warmup: calibrate baseline in first 1-2 seconds
         if (_userOpenEarBaseline == 0.0) {
           _userOpenEarBaseline = bio.ear;
         } else {
-          _userOpenEarBaseline = math.max(_userOpenEarBaseline, bio.ear);
+          _userOpenEarBaseline = (_userOpenEarBaseline * 0.70) + (bio.ear * 0.30);
         }
         _baselineSampleCount++;
-      } else if (bio.ear > _userOpenEarBaseline) {
-        _userOpenEarBaseline = (_userOpenEarBaseline * 0.98) + (bio.ear * 0.02);
+      } else if (bio.ear >= _userOpenEarBaseline * 0.85) {
+        // Smooth continuous tracking ONLY when eyes are open (prevents baseline falling when closing eyes)
+        _userOpenEarBaseline = (_userOpenEarBaseline * 0.985) + (bio.ear * 0.015);
       }
     }
 
-    // Dynamic threshold: closure is detected only on >42% drop below personal open baseline
-    final double activeThreshold = math.min(
-      (_userOpenEarBaseline > 0.09 ? _userOpenEarBaseline : 0.19) * 0.58,
-      0.120,
-    );
+    final double baseline = _userOpenEarBaseline > 0.12 ? _userOpenEarBaseline : 0.25;
+
+    // Relative percentage drop threshold:
+    // Highway: closed if drops below 65% of personal open baseline
+    // Strict (Night): closed if drops below 72%
+    // City: closed if drops below 58%
+    double dropRatio = 0.65;
+    if (appState.sensitivityMode == SensitivityMode.strict) {
+      dropRatio = 0.72;
+    } else if (appState.sensitivityMode == SensitivityMode.city) {
+      dropRatio = 0.58;
+    }
+
+    final double activeThreshold = (baseline * dropRatio + appState.personalEarOffset).clamp(0.10, 0.26);
 
     final double closedCutoff = activeThreshold - 0.025;
     final double openCutoff = activeThreshold + 0.025;
@@ -385,7 +400,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
     appState.recordBiometricFrame(ear: bio.ear, eyesClosed: eyesClosed);
 
-    // Continuous Eye Closure Check (> 2.0s) & Blink Counter
+    // Continuous Eye Closure Check (> 1.35s) & Blink Counter
     if (eyesClosed) {
       _eyesClosedSince ??= now;
       if (!_wasEyeClosedForBlink) {
@@ -394,7 +409,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       }
 
       final int closedMs = now.difference(_eyesClosedSince!).inMilliseconds;
-      if (closedMs >= 2000 && !_isAlarmRouteOpen) {
+      if (closedMs >= 1350 && !_isAlarmRouteOpen) {
         _eyesClosedSince = null;
         _wasEyeClosedForBlink = false;
         _triggerDangerAlert();
@@ -530,17 +545,18 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         (_webFaceData != null && _webFaceData!.faceFound);
     final double avgEyeOpen =
         ((_leftEyeProb + _rightEyeProb) / 2.0).clamp(0.0, 1.0);
-    final double threshold = math.min(
-      (_userOpenEarBaseline > 0.09 ? _userOpenEarBaseline : 0.19) * 0.58,
-      0.120,
-    );
+    final double baseline = _userOpenEarBaseline > 0.12 ? _userOpenEarBaseline : 0.24;
+    final double dropRatio = appState.sensitivityMode == SensitivityMode.strict
+        ? 0.72
+        : (appState.sensitivityMode == SensitivityMode.city ? 0.58 : 0.65);
+    final double threshold = (baseline * dropRatio + appState.personalEarOffset).clamp(0.10, 0.26);
     final bool isEyesOpen = _liveEar >= threshold;
     final int eyeOpenPct = (avgEyeOpen * 100).round();
 
     final int closedElapsedMs = _eyesClosedSince != null
         ? DateTime.now().difference(_eyesClosedSince!).inMilliseconds
         : 0;
-    final double closureProgress = (closedElapsedMs / 1500.0).clamp(0.0, 1.0);
+    final double closureProgress = (closedElapsedMs / 1350.0).clamp(0.0, 1.0);
 
     final int liveScore = appState.calculatedSafetyScore;
 
@@ -892,7 +908,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                                           child: Text(
                                             !hasFace
                                                 ? appState.t('noFaceDetected')
-                                                : 'EAR: ${_liveEar.toStringAsFixed(2)} (${isEyesOpen ? appState.t('eyeOpen') : appState.t('eyeClosed')})',
+                                                : 'EAR: ${_liveEar.toStringAsFixed(2)} • $eyeOpenPct% (${isEyesOpen ? appState.t('eyeOpen') : appState.t('eyeClosed')})',
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
                                               color: !hasFace

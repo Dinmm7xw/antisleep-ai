@@ -182,17 +182,37 @@ class FaceMeshOverlayPainter extends CustomPainter {
     required Paint lipContourPaint,
     required Paint dotPaint,
   }) {
+    // Correct for BoxFit.cover scaling between camera aspect ratio and viewport size
+    final double videoAspect = (imageSize.width > 0 && imageSize.height > 0)
+        ? (imageSize.width / imageSize.height)
+        : (size.width / size.height);
+    final double viewAspect = size.width / size.height;
+
+    double scaleX = size.width;
+    double scaleY = size.height;
+    double dx = 0.0;
+    double dy = 0.0;
+
+    if (viewAspect > videoAspect) {
+      scaleX = size.width;
+      scaleY = size.width / videoAspect;
+      dy = (size.height - scaleY) / 2.0;
+    } else if (viewAspect < videoAspect) {
+      scaleY = size.height;
+      scaleX = size.height * videoAspect;
+      dx = (size.width - scaleX) / 2.0;
+    }
+
     // Mirror horizontally because front webcam preview is mirrored
-    Offset mapNorm(Offset norm) =>
-        Offset((1.0 - norm.dx) * size.width, norm.dy * size.height);
+    Offset mapNorm(Offset norm) {
+      final double mirroredX = 1.0 - norm.dx;
+      return Offset(dx + mirroredX * scaleX, dy + norm.dy * scaleY);
+    }
 
     final Rect rawBox = data.boundingBox;
-    final Rect screenBox = Rect.fromLTRB(
-      (1.0 - rawBox.right) * size.width,
-      rawBox.top * size.height,
-      (1.0 - rawBox.left) * size.width,
-      rawBox.bottom * size.height,
-    ).inflate(10);
+    final Offset boxTopLeft = mapNorm(Offset(rawBox.right, rawBox.top));
+    final Offset boxBottomRight = mapNorm(Offset(rawBox.left, rawBox.bottom));
+    final Rect screenBox = Rect.fromPoints(boxTopLeft, boxBottomRight).inflate(10);
 
     _drawCornerBrackets(canvas, screenBox, bracketPaint);
 

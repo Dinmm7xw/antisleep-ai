@@ -73,6 +73,7 @@
       let faceMesh = null;
       let isBusy = false;
       let bgClosedSince = null;
+      let smoothedEar = null;
 
       function dist(a, b) {
         return Math.hypot(a.x - b.x, a.y - b.y);
@@ -226,6 +227,7 @@
       function onFaceResults(results) {
         if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
           bgClosedSince = null;
+          smoothedEar = null;
           window._antiSleepLatestFaceJson = JSON.stringify({ faceFound: false, ts: Date.now() });
           return;
         }
@@ -233,7 +235,13 @@
         const lm = results.multiFaceLandmarks[0];
         const rightEar = computeEyeEAR(lm, true);
         const leftEar = computeEyeEAR(lm, false);
-        const ear = (leftEar + rightEar) / 2.0;
+        const rawEar = (leftEar + rightEar) / 2.0;
+        if (smoothedEar === null) {
+          smoothedEar = rawEar;
+        } else {
+          smoothedEar = (smoothedEar * 0.65) + (rawEar * 0.35);
+        }
+        const ear = smoothedEar;
         const mar = computeMAR(lm);
 
         // Background autonomous alarm
