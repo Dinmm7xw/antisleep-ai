@@ -34,3 +34,4 @@ flutter build web --release
 echo "=========================================="
 echo "✅ Build finished successfully! build/web is ready."
 echo "=========================================="
+
