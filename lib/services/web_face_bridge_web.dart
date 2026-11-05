@@ -88,11 +88,38 @@ external void _jsStopSpeech();
 @JS('_antiSleepEnsureWebcam')
 external void _jsEnsureWebcam();
 
+@JS('_antiSleepReleaseCamera')
+external void _jsReleaseCamera();
+
 @JS('_antiSleepPlayKazakhVoice')
 external void _jsPlayKazakhVoice(JSString key);
 
 @JS('_antiSleepStopKazakhVoice')
 external void _jsStopKazakhVoice();
+@JS('_antiSleepLatestSpeechInput')
+external JSString? get _jsLatestSpeechInput;
+
+@JS('_antiSleepLatestSpeechInput')
+external set _jsLatestSpeechInput(JSString? value);
+
+@JS('_antiSleepInterimSpeechInput')
+external JSString? get _jsInterimSpeechInput;
+
+@JS('_antiSleepIsListening')
+external JSBoolean? get _jsIsListening;
+
+@JS('_antiSleepStartListening')
+external void _jsStartListening(JSString lang);
+
+@JS('_antiSleepStopListening')
+external void _jsStopListening();
+
+
+@JS('_antiSleepSaveDriver')
+external void _jsSaveDriver(JSString json);
+
+@JS('_antiSleepLoadDriver')
+external JSString? _jsLoadDriver();
 
 class WebFaceBridge {
   static final Set<String> _registeredViews = <String>{};
@@ -285,6 +312,7 @@ class WebFaceBridge {
     } catch (_) {}
   }
 
+  static void playAlarmSound() => startWebSiren();
   static void startWebSiren() {
     try {
       _jsStartWebSiren();
@@ -343,5 +371,76 @@ class WebFaceBridge {
     try {
       _jsStopKazakhVoice();
     } catch (_) {}
+  }
+
+  static void releaseCamera() {
+    try {
+      _jsReleaseCamera();
+    } catch (_) {}
+  }
+
+  static void saveDriverProfile(String json) {
+    try {
+      _jsSaveDriver(json.toJS);
+    } catch (_) {}
+  }
+
+  static String loadDriverProfile() {
+    try {
+      final JSString? val = _jsLoadDriver();
+      return val?.toDart ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static void clearDriverProfile() {
+    try {
+      _jsSaveDriver(''.toJS);
+    } catch (_) {}
+  }
+
+  static void startListening(String lang) {
+    try {
+      _jsStartListening(lang.toJS);
+    } catch (_) {}
+  }
+
+  static void stopListening() {
+    try {
+      _jsStopListening();
+    } catch (_) {}
+  }
+
+  static bool isListening() {
+    try {
+      return _jsIsListening?.toDart ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? pollInterimSpeechInput() {
+    try {
+      final JSString? raw = _jsInterimSpeechInput;
+      if (raw == null) return null;
+      final String s = raw.toDart;
+      return s.isNotEmpty ? s : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String? pollLatestSpeechInput() {
+    try {
+      final JSString? raw = _jsLatestSpeechInput;
+      if (raw == null) return null;
+      final String text = raw.toDart;
+      if (text.isEmpty) return null;
+      _jsLatestSpeechInput = ''.toJS;
+      return text;
+    } catch (_) {
+      return null;
+    }
   }
 }

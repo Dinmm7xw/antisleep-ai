@@ -10,6 +10,8 @@ class CockpitColors {
   static const Color warningAmber = Color(0xFFFFB300);
   static const Color textWhite = Color(0xFFFFFFFF);
   static const Color textMuted = Color(0xFF8B949E);
+  static const Color textPrimary = textWhite;
+  static const Color background = bg;
 
   static ThemeData get darkTheme {
     return ThemeData(

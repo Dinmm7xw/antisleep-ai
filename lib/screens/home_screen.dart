@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
@@ -15,6 +15,7 @@ import '../widgets/cockpit_app_bar.dart';
 import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/painters/dashboard_illustration_painter.dart';
 import 'monitoring_screen.dart';
+import '../widgets/ai_copilot_orb_widget.dart';
 
 /// Screen 1: Futuristic Automotive Cockpit HomeScreen
 class HomeScreen extends StatefulWidget {
@@ -49,7 +50,13 @@ class _HomeScreenState extends State<HomeScreen>
     bool hapticsOk = false;
 
     try {
-      globalCameras = await availableCameras();
+      try {
+        globalCameras = await availableCameras();
+      } catch (firstErr) {
+        debugPrint('Camera probe initial attempt: $firstErr');
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
+        globalCameras = await availableCameras();
+      }
       if (globalCameras.isNotEmpty) {
         final CameraDescription front = globalCameras.firstWhere(
           (CameraDescription c) => c.lensDirection == CameraLensDirection.front,
@@ -58,10 +65,12 @@ class _HomeScreenState extends State<HomeScreen>
         camOk = true;
         camLabel = kIsWeb
             ? 'HD WEBCAM'
-            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}В°)';
+            : '${front.lensDirection.name.toUpperCase()} (${front.sensorOrientation}°)';
       }
     } catch (e) {
       debugPrint('Camera probe error: $e');
+      camOk = false;
+      camLabel = 'Камера занята (закройте другие вкладки)';
     }
 
     if (!kIsWeb) {
@@ -461,6 +470,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
       bottomNavigationBar: const CockpitBottomNavBar(currentIndex: 0),
+      floatingActionButton: const AiCopilotOrbWidget(),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),

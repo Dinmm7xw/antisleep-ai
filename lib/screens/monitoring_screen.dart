@@ -15,6 +15,9 @@ import '../widgets/cockpit_app_bar.dart';
 import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/live_navigation_map_view.dart';
 import '../widgets/painters/face_mesh_overlay_painter.dart';
+import '../services/ai_voice_copilot_service.dart';
+import '../widgets/ai_copilot_orb_widget.dart';
+
 import 'danger_alert_screen.dart';
 import 'home_screen.dart';
 import 'summary_screen.dart';
@@ -185,7 +188,12 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       );
       _lensDirection = frontCamera.lensDirection;
 
+      if (kIsWeb) {
+        WebFaceBridge.releaseCamera();
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
       await _cameraController?.dispose();
+      _cameraController = null;
 
       final CameraController controller = kIsWeb
           ? CameraController(
@@ -203,9 +211,6 @@ class _MonitoringScreenState extends State<MonitoringScreen>
             );
 
       _cameraController = controller;
-      if (kIsWeb) {
-        WebFaceBridge.ensureWebcam();
-      }
       await controller.initialize();
 
       if (!mounted) return;
@@ -220,15 +225,20 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       }
     } catch (e) {
       debugPrint('Camera initialization error: $e');
+      if (kIsWeb) {
+        try {
+          WebFaceBridge.ensureWebcam();
+        } catch (_) {}
+      }
       if (!isRetry && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 700));
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
         if (mounted) {
           await _initFrontCamera(isRetry: true);
         }
         return;
       }
       if (mounted) {
-        setState(() => _cameraErrorText = 'AI Radar HUD');
+        setState(() => _cameraErrorText = 'Камера занята другим приложением');
       }
     }
   }
@@ -245,14 +255,17 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         _webFaceData = data;
         if (data != null && data.faceFound) {
           _lastFaceDetectedAt = DateTime.now();
+          final double thresh = appState.effectiveEarThreshold;
+          final double closedCutoff = thresh - 0.040; // ~0.115
+          final double openCutoff = thresh + 0.030;   // ~0.185
+          final double dynamicProb = ((data.ear - closedCutoff) / (openCutoff - closedCutoff)).clamp(0.05, 0.98);
+
           _evaluateRealBiometrics(
             FaceBiometrics(
               ear: data.ear,
               mar: data.mar,
-              leftEyeOpenProb:
-                  data.ear >= appState.effectiveEarThreshold ? 0.95 : 0.05,
-              rightEyeOpenProb:
-                  data.ear >= appState.effectiveEarThreshold ? 0.95 : 0.05,
+              leftEyeOpenProb: dynamicProb,
+              rightEyeOpenProb: dynamicProb,
               headPitchX: data.pitch,
               headYawY: data.yaw,
               headRollZ: 0.0,
@@ -386,6 +399,9 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         HapticFeedback.heavyImpact();
         _showTemporaryBanner(appState.t('yawnToast'));
         KazakhVoiceAudio.playYawnAlert();
+        if (appState.totalYawns >= 2) {
+          aiCopilotService.checkFatigueAutoPrompt(60, appState.totalYawns);
+        }
       }
     } else {
       _mouthOpenSince = null;
@@ -903,6 +919,13 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                               ),
                             ),
                           ),
+
+                        // Floating Futuristic AI Voice Co-Pilot Hologram Orb (Alice / Siri / AntiSleep)
+                        Positioned(
+                          bottom: _isPipOverlayMode ? 92 : 62,
+                          right: 14,
+                          child: const AiCopilotOrbWidget(),
+                        ),
                       ],
                     ),
                   ),
@@ -1041,12 +1064,45 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                   const SizedBox(height: 4),
                   Text(
                     _cameraErrorText ?? 'EAR: ${_liveEar.toStringAsFixed(2)}',
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: CockpitColors.textWhite,
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                  if (_cameraErrorText != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _cameraErrorText = 'Подключение...');
+                        _initFrontCamera(isRetry: false);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF19AA1E),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const <Widget>[
+                            Icon(Icons.refresh_rounded, size: 14, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text(
+                              'Повторить',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

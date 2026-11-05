@@ -74,6 +74,7 @@ class WebFaceBridge {
     double pitchDeg,
   ) {}
   static Offset? pollClickedYandexCoords() => null;
+  static void playAlarmSound() => startWebSiren();
   static void startWebSiren() {}
   static void stopWebSiren() {}
   static void speakNavigationInstruction(String text) {}
@@ -84,4 +85,13 @@ class WebFaceBridge {
   static void ensureWebcam() {}
   static void playKazakhVoice(String key) {}
   static void stopKazakhVoice() {}
+  static void releaseCamera() {}
+  static void saveDriverProfile(String json) {}
+  static String loadDriverProfile() => '';
+  static void clearDriverProfile() {}
+  static void startListening(String lang) {}
+  static void stopListening() {}
+  static bool isListening() => false;
+  static String? pollLatestSpeechInput() => null;
+  static String? pollInterimSpeechInput() => null;
 }

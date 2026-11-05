@@ -116,6 +116,21 @@
 
       window._antiSleepFindVideo = findActiveVideoElement;
 
+      // Release any orphan camera tracks
+      window._antiSleepReleaseCamera = function() {
+        try {
+          const vid = document.getElementById('_antiSleepFallbackVideo');
+          if (vid && vid.srcObject) {
+            vid.srcObject.getTracks().forEach(t => t.stop());
+            vid.srcObject = null;
+          }
+          if (capturedVideo && capturedVideo !== vid && capturedVideo.srcObject) {
+            capturedVideo.srcObject.getTracks().forEach(t => t.stop());
+            capturedVideo.srcObject = null;
+          }
+        } catch (e) {}
+      };
+
       // Ensure fallback camera stream if camera_web takes time
       window._antiSleepEnsureWebcam = async function() {
         const current = findActiveVideoElement();
@@ -199,7 +214,7 @@
 
         // Background autonomous alarm
         if (document.hidden && window._antiSleepBgEnabled) {
-          if (ear < 0.22) {
+          if (ear < 0.15) {
             if (!bgClosedSince) bgClosedSince = Date.now();
             if (Date.now() - bgClosedSince >= 1500) {
               window._antiSleepStartWebSiren();
@@ -430,17 +445,11 @@
           }
         });
 
-        // Create 2GIS 3D Blue Navigation Wedge + Circular Driver Avatar Marker
+        // Create 2GIS 3D Blue Navigation Wedge Marker (Clean, no avatar circle)
         window._antiSleep2GisCarMarker = new mapgl.HtmlMarker(map, {
           coordinates: [startLng, startLat],
-          html: `<div style="position:relative;width:82px;height:68px;pointer-events:none;transform:translate(-41px,-34px);">
-            <div style="position:absolute;right:6px;bottom:6px;width:40px;height:40px;border-radius:50%;background:#1E5EFF;border:3px solid #fff;box-shadow:0 4px 10px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
-            </div>
-            <div style="position:absolute;left:4px;top:4px;width:46px;height:46px;border-radius:50%;background:linear-gradient(180deg,#3A506B,#0B132B);border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
-              <span style="color:#00E676;font-weight:900;font-size:13px;font-family:sans-serif;">AI</span>
-              <div style="position:absolute;right:-4px;bottom:-2px;background:#494F56;color:#fff;font-size:9px;font-weight:900;padding:1px 5px;border-radius:10px;border:1.5px solid #fff;font-family:sans-serif;">3</div>
-            </div>
+          html: `<div style="width:44px;height:44px;border-radius:50%;background:#1E5EFF;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;transform:translate(-22px,-22px);pointer-events:none;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
           </div>`
         });
       } catch (err) {
@@ -575,6 +584,130 @@
       } catch (e) {}
     };
 
+        // Real-Time Hands-Free Speech Recognition & Speech Synthesis Bridge
+    window._antiSleepRecognition = null;
+    window._antiSleepIsListening = false;
+    window._antiSleepLatestSpeechInput = "";
+    window._antiSleepInterimSpeechInput = "";
+    window._antiSleepTargetLang = "kk-KZ";
+
+    window._antiSleepStartListening = function(lang) {
+      try {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          console.warn("[AntiSleep Co-Pilot] SpeechRecognition not supported in this browser");
+          return false;
+        }
+        if (window._antiSleepRecognition) {
+          try { window._antiSleepRecognition.abort(); } catch (e) {}
+        }
+        const localeMap = { 'kk': 'kk-KZ', 'ru': 'ru-RU', 'en': 'en-US' };
+        window._antiSleepTargetLang = localeMap[lang] || 'kk-KZ';
+
+        const rec = new SpeechRecognition();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.maxAlternatives = 1;
+        rec.lang = window._antiSleepTargetLang;
+
+        rec.onstart = function() {
+          window._antiSleepIsListening = true;
+          console.log("[AntiSleep Co-Pilot] Continuous listening active in", rec.lang);
+        };
+
+        rec.onresult = function(event) {
+          let interim = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              const clean = transcript.trim();
+              if (clean.length > 0) {
+                console.log("[AntiSleep Co-Pilot] Final speech:", clean);
+                window._antiSleepLatestSpeechInput = clean;
+                window._antiSleepInterimSpeechInput = "";
+              }
+            } else {
+              interim += transcript;
+            }
+          }
+          if (interim.trim().length > 0) {
+            window._antiSleepInterimSpeechInput = interim.trim();
+          }
+        };
+
+        rec.onerror = function(event) {
+          console.warn("[AntiSleep Co-Pilot] Speech recognition event:", event.error);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            window._antiSleepIsListening = false;
+          }
+        };
+
+        rec.onend = function() {
+          console.log("[AntiSleep Co-Pilot] Listening iteration finished");
+          // If listening is still enabled by user, immediately restart so mic never drops
+          if (window._antiSleepIsListening) {
+            setTimeout(function() {
+              if (window._antiSleepIsListening) {
+                try { rec.start(); } catch (e) {}
+              }
+            }, 200);
+          }
+        };
+
+        rec.start();
+        window._antiSleepRecognition = rec;
+        window._antiSleepIsListening = true;
+        return true;
+      } catch (e) {
+        console.warn("[AntiSleep Co-Pilot] startListening exception:", e);
+        return false;
+      }
+    };
+
+    window._antiSleepStopListening = function() {
+      try {
+        window._antiSleepIsListening = false;
+        if (window._antiSleepRecognition) {
+          window._antiSleepRecognition.stop();
+          window._antiSleepRecognition = null;
+        }
+        window._antiSleepInterimSpeechInput = "";
+      } catch (e) {}
+    };
+
+    // Speech Synthesis for Dynamic Human-like AI Answers
+    window._antiSleepSpeakText = function(text, lang) {
+      try {
+        if (!window.speechSynthesis || !text) return;
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*#_~`«»]/g, '').trim();
+        if (!clean) return;
+        const utter = new SpeechSynthesisUtterance(clean);
+        const localeMap = { 'kk': 'kk-KZ', 'ru': 'ru-RU', 'en': 'en-US' };
+        const targetLocale = localeMap[lang] || 'kk-KZ';
+        utter.lang = targetLocale;
+
+        const voices = window.speechSynthesis.getVoices();
+        const matchingVoice = voices.find(v => v.lang === targetLocale) ||
+                              voices.find(v => v.lang.startsWith(targetLocale.split('-')[0])) ||
+                              voices.find(v => v.lang.includes('ru') || v.lang.includes('RU'));
+        if (matchingVoice) {
+          utter.voice = matchingVoice;
+        }
+        utter.rate = 1.05;
+        utter.pitch = 1.0;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {
+        console.warn("[AntiSleep Co-Pilot] speakText error:", e);
+      }
+    };
+
+    window._antiSleepStopSpeech = function() {
+      try {
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+      } catch (e) {}
+    };
+
     // Multilingual Studio Neural Voice Player (KK: Daulet, RU: Svetlana, EN: Emma)
     window._antiSleepCurrentAudio = null;
     window._antiSleepPlayKazakhVoice = function(key) {
@@ -609,6 +742,25 @@
           window._antiSleepCurrentAudio = null;
         }
       } catch (e) {}
+    };
+
+    // Driver Profile Persistence in Web LocalStorage
+    window._antiSleepSaveDriver = function(json) {
+      try {
+        if (json) {
+          localStorage.setItem('antisleep_driver_profile', json);
+        } else {
+          localStorage.removeItem('antisleep_driver_profile');
+        }
+      } catch (e) {}
+    };
+
+    window._antiSleepLoadDriver = function() {
+      try {
+        return localStorage.getItem('antisleep_driver_profile') || '';
+      } catch (e) {
+        return '';
+      }
     };
   </script>
 </head>

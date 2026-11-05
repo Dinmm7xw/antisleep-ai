@@ -5,6 +5,9 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/localization/app_localizations.dart';
+import '../models/driver_profile.dart';
+import '../services/supabase_service.dart';
+import '../services/web_face_bridge.dart';
 
 /// Global list of available device cameras initialized at startup.
 List<CameraDescription> globalCameras = <CameraDescription>[];
@@ -89,17 +92,12 @@ class AppSessionState extends ChangeNotifier {
   bool isNightLightEnabled = false;
   double personalEarOffset = 0.0;
 
-  // Idea #1: AI Voice Co-Pilot & Interactive Cognitive Dialog
-  bool isVoiceCopilotEnabled = true;
-
-  // Idea #2: 40Hz Gamma Neuro-Acoustic Binaural Stimulation
-  bool isNeuroAcousticEnabled = true;
-
-  // Cognitive Awakening Challenge in Danger Alert Screen
-  bool isCognitiveChallengeEnabled = true;
-
   // Saved trip history loaded/persisted on device
   final List<TripRecord> savedTrips = <TripRecord>[];
+
+  // Authenticated Driver Profile State
+  DriverProfile? currentDriver;
+  bool get isAuthenticated => currentDriver != null;
 
   String get lang => _lang;
 
@@ -107,20 +105,23 @@ class AppSessionState extends ChangeNotifier {
       _totalFramesAnalyzed > 0 ? (_earSum / _totalFramesAnalyzed) : 0.31;
 
   /// Effective EAR threshold taking into account sensitivity mode and personal calibration
+  /// Effective EAR threshold taking into account sensitivity mode and personal calibration.
+  /// Calibrated specifically for Asian / Central Asian almond eye shapes:
+  /// Natural open eye EAR: 0.17 - 0.24, True closed eye EAR: 0.08 - 0.13.
   double get effectiveEarThreshold {
     double base;
     switch (sensitivityMode) {
       case SensitivityMode.city:
-        base = 0.20;
+        base = 0.145; // City / Gentle Mode (triggers only on true deep eye closure < 0.145)
         break;
       case SensitivityMode.highway:
-        base = 0.22;
+        base = 0.155; // Highway Standard Mode (safely below 0.19, triggers on real closure < 0.155)
         break;
       case SensitivityMode.strict:
-        base = 0.24;
+        base = 0.170; // Strict Alert Mode (< 0.170)
         break;
     }
-    return (base + personalEarOffset).clamp(0.16, 0.30);
+    return (base + personalEarOffset).clamp(0.12, 0.24);
   }
 
   /// PERCLOS: Percentage of time eyes were closed over the trip
@@ -141,23 +142,10 @@ class AppSessionState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSensitivityMode(SensitivityMode mode) => setSensitivity(mode);
+
   void toggleNightLight() {
     isNightLightEnabled = !isNightLightEnabled;
-    notifyListeners();
-  }
-
-  void toggleVoiceCopilot() {
-    isVoiceCopilotEnabled = !isVoiceCopilotEnabled;
-    notifyListeners();
-  }
-
-  void toggleNeuroAcoustic() {
-    isNeuroAcousticEnabled = !isNeuroAcousticEnabled;
-    notifyListeners();
-  }
-
-  void toggleCognitiveChallenge() {
-    isCognitiveChallengeEnabled = !isCognitiveChallengeEnabled;
     notifyListeners();
   }
 
@@ -254,6 +242,12 @@ class AppSessionState extends ChangeNotifier {
     savedTrips.insert(0, record);
     notifyListeners();
 
+    // Sync to Supabase Cloud PostgreSQL asynchronously
+    SupabaseService.syncTripRecord(
+      record,
+      driverIdentifier: currentDriver?.emailOrPhone ?? 'guest',
+    );
+
     if (!kIsWeb) {
       try {
         final File file =
@@ -290,6 +284,147 @@ class AppSessionState extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Failed to load trip history: $e');
+    }
+  }
+
+  /// Loads stored driver profile from localStorage (Web) or filesystem (Mobile)
+  Future<void> loadDriverProfileFromDisk() async {
+    try {
+      if (kIsWeb) {
+        final String raw = WebFaceBridge.loadDriverProfile();
+        if (raw.isNotEmpty) {
+          final DriverProfile? profile = DriverProfile.fromJsonString(raw);
+          if (profile != null) {
+            currentDriver = profile;
+            _lang = profile.language;
+            notifyListeners();
+          }
+        }
+      } else {
+        final File file =
+            File('${Directory.systemTemp.path}/antisleep_driver.json');
+        if (await file.exists()) {
+          final String raw = await file.readAsString();
+          final DriverProfile? profile = DriverProfile.fromJsonString(raw);
+          if (profile != null) {
+            currentDriver = profile;
+            _lang = profile.language;
+            notifyListeners();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading driver profile: $e');
+    }
+  }
+
+  /// Persists driver profile
+  Future<void> saveDriverProfileToDisk(DriverProfile profile) async {
+    currentDriver = profile;
+    _lang = profile.language;
+    notifyListeners();
+
+    // Sync to Supabase Cloud PostgreSQL asynchronously
+    SupabaseService.syncDriverProfile(profile);
+
+    try {
+      final String jsonStr = profile.toJsonString();
+      if (kIsWeb) {
+        WebFaceBridge.saveDriverProfile(jsonStr);
+      } else {
+        final File file =
+            File('${Directory.systemTemp.path}/antisleep_driver.json');
+        await file.writeAsString(jsonStr);
+      }
+    } catch (e) {
+      debugPrint('Error saving driver profile: $e');
+    }
+  }
+
+  /// One-click Demo/Guest Login for fast testing & project defense
+  Future<void> loginAsGuest() async {
+    final DriverProfile guest = DriverProfile(
+      name: _lang == 'kk'
+          ? 'Димаш (Қонақ)'
+          : (_lang == 'ru' ? 'Димаш (Гость)' : 'Dimash (Guest)'),
+      emailOrPhone: 'guest@antisleep.kz',
+      carPlate: '777 AAA 02',
+      language: _lang,
+      sosPhone: '+7 (777) 123-45-67',
+      isGuest: true,
+    );
+    await saveDriverProfileToDisk(guest);
+  }
+
+  /// Email/Password Login
+  Future<bool> login({
+    required String emailOrPhone,
+    required String password,
+  }) async {
+    // Determine driver name from email/phone
+    String derivedName = emailOrPhone.split('@').first;
+    if (derivedName.length > 1) {
+      derivedName = derivedName[0].toUpperCase() + derivedName.substring(1);
+    } else {
+      derivedName = 'Жүргізуші / Водитель';
+    }
+
+    final DriverProfile profile = DriverProfile(
+      name: derivedName,
+      emailOrPhone: emailOrPhone.trim(),
+      carPlate: '777 AAA 02',
+      language: _lang,
+      sosPhone: '+7 (777) 123-45-67',
+      isGuest: false,
+    );
+    await saveDriverProfileToDisk(profile);
+    return true;
+  }
+
+  /// Full Registration
+  Future<bool> register({
+    required String name,
+    required String emailOrPhone,
+    required String password,
+    required String carPlate,
+    required String language,
+  }) async {
+    final DriverProfile profile = DriverProfile(
+      name: name.trim().isEmpty ? 'Жүргізуші / Водитель' : name.trim(),
+      emailOrPhone: emailOrPhone.trim(),
+      carPlate: carPlate.trim().isEmpty ? 'KZ 000 AAA 01' : carPlate.trim().toUpperCase(),
+      language: language,
+      sosPhone: '', // Left empty as SOS is configured optionally in Settings
+      isGuest: false,
+    );
+    await saveDriverProfileToDisk(profile);
+    return true;
+  }
+
+  /// Update SOS phone from Settings screen
+  Future<void> updateSosPhone(String phone) async {
+    if (currentDriver != null) {
+      final DriverProfile updated = currentDriver!.copyWith(sosPhone: phone.trim());
+      await saveDriverProfileToDisk(updated);
+    }
+  }
+
+  /// Logout and clear saved driver profile
+  Future<void> logout() async {
+    currentDriver = null;
+    notifyListeners();
+    try {
+      if (kIsWeb) {
+        WebFaceBridge.clearDriverProfile();
+      } else {
+        final File file =
+            File('${Directory.systemTemp.path}/antisleep_driver.json');
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error logging out: $e');
     }
   }
 }
