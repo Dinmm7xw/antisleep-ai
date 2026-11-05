@@ -238,9 +238,9 @@
 
         // Background autonomous alarm
         if (document.hidden && window._antiSleepBgEnabled) {
-          if (ear < 0.115) {
+          if (ear < 0.085) {
             if (!bgClosedSince) bgClosedSince = Date.now();
-            if (Date.now() - bgClosedSince >= 1500) {
+            if (Date.now() - bgClosedSince >= 2500) {
               window._antiSleepStartWebSiren();
               if (window._antiSleepPlayKazakhVoice) {
                 window._antiSleepPlayKazakhVoice('drowsiness_alert');

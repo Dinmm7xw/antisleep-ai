@@ -258,10 +258,8 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         _webFaceData = data;
         if (data != null && data.faceFound) {
           _lastFaceDetectedAt = DateTime.now();
-          final double thresh = _userOpenEarBaseline > 0.11
-              ? (_userOpenEarBaseline * 0.70).clamp(0.10, 0.16)
-              : appState.effectiveEarThreshold;
-          final double closedCutoff = thresh - 0.035;
+          final double thresh = math.min((_userOpenEarBaseline > 0.09 ? _userOpenEarBaseline : 0.19) * 0.58, 0.120);
+          final double closedCutoff = thresh - 0.025;
           final double openCutoff = thresh + 0.025;
           final double dynamicProb = ((data.ear - closedCutoff) / (openCutoff - closedCutoff)).clamp(0.05, 0.98);
 
@@ -352,9 +350,9 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
     final DateTime now = DateTime.now();
 
-    // 1. Smart Continuous Auto-Baseline Calibration (Adapts to Asian/almond and all eye shapes)
-    if (bio.ear > 0.10 && bio.headPitchX.abs() < 42.0 && bio.headYawY.abs() < 42.0) {
-      if (_baselineSampleCount < 60) {
+    // 1. Pure AI Adaptive Eye Baseline Tracking (Adapts instantly to any eye shape)
+    if (bio.ear > 0.08) {
+      if (_baselineSampleCount < 90) {
         if (_userOpenEarBaseline == 0.0) {
           _userOpenEarBaseline = bio.ear;
         } else {
@@ -362,15 +360,17 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         }
         _baselineSampleCount++;
       } else if (bio.ear > _userOpenEarBaseline) {
-        _userOpenEarBaseline = (_userOpenEarBaseline * 0.96) + (bio.ear * 0.04);
+        _userOpenEarBaseline = (_userOpenEarBaseline * 0.98) + (bio.ear * 0.02);
       }
     }
 
-    final double activeThreshold = _userOpenEarBaseline > 0.10
-        ? (_userOpenEarBaseline * 0.70).clamp(0.10, 0.16)
-        : appState.effectiveEarThreshold;
+    // Dynamic threshold: closure is detected only on >42% drop below personal open baseline
+    final double activeThreshold = math.min(
+      (_userOpenEarBaseline > 0.09 ? _userOpenEarBaseline : 0.19) * 0.58,
+      0.120,
+    );
 
-    final double closedCutoff = activeThreshold - 0.035;
+    final double closedCutoff = activeThreshold - 0.025;
     final double openCutoff = activeThreshold + 0.025;
     final double dynamicProb = ((bio.ear - closedCutoff) / (openCutoff - closedCutoff)).clamp(0.05, 0.98);
 
@@ -385,7 +385,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
     appState.recordBiometricFrame(ear: bio.ear, eyesClosed: eyesClosed);
 
-    // 1. Continuous Eye Closure Check (> 1.5s) & Blink Counter
+    // Continuous Eye Closure Check (> 2.0s) & Blink Counter
     if (eyesClosed) {
       _eyesClosedSince ??= now;
       if (!_wasEyeClosedForBlink) {
@@ -394,13 +394,16 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       }
 
       final int closedMs = now.difference(_eyesClosedSince!).inMilliseconds;
-      if (closedMs >= 1500 && !_isAlarmRouteOpen) {
+      if (closedMs >= 2000 && !_isAlarmRouteOpen) {
         _eyesClosedSince = null;
         _wasEyeClosedForBlink = false;
         _triggerDangerAlert();
         return;
       }
     } else {
+      if (kIsWeb) {
+        WebFaceBridge.stopWebSiren();
+      }
       if (_wasEyeClosedForBlink && _blinkStartedAt != null) {
         final int blinkDurationMs =
             now.difference(_blinkStartedAt!).inMilliseconds;
@@ -527,9 +530,10 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         (_webFaceData != null && _webFaceData!.faceFound);
     final double avgEyeOpen =
         ((_leftEyeProb + _rightEyeProb) / 2.0).clamp(0.0, 1.0);
-    final double threshold = _userOpenEarBaseline > 0.10
-        ? (_userOpenEarBaseline * 0.70).clamp(0.10, 0.16)
-        : appState.effectiveEarThreshold;
+    final double threshold = math.min(
+      (_userOpenEarBaseline > 0.09 ? _userOpenEarBaseline : 0.19) * 0.58,
+      0.120,
+    );
     final bool isEyesOpen = _liveEar >= threshold;
     final int eyeOpenPct = (avgEyeOpen * 100).round();
 

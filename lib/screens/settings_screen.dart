@@ -18,7 +18,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   // Settings local state mirrors appState
-  double _earThreshold = 0.155;
   double _alarmTimeoutSec = 1.5;
   int _alarmSoundIndex = 0; // 0 = Сирена 880Гц, 1 = Голос ИИ, 2 = Мягкий гонг
   bool _sosAlertEnabled = true;
@@ -28,7 +27,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _earThreshold = appState.effectiveEarThreshold;
     if (appState.currentDriver != null &&
         appState.currentDriver!.sosPhone.isNotEmpty) {
       _sosPhoneController.text = appState.currentDriver!.sosPhone;
@@ -149,66 +147,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 3. Eye Aspect Ratio (EAR) Threshold Calibration
-            _buildSectionHeader('КАЛИБРОВКА ДАТЧИКА ГЛАЗ (EAR THRESHOLD)', Icons.visibility_rounded),
+            // 3. AI Smart Adaptive Vision
+            _buildSectionHeader('ИИ КӨЗДІ АВТОМАТТЫ ТАНУ (SMART AI ADAPTIVE)', Icons.auto_awesome_rounded),
             _buildCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: <Widget>[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: <Widget>[
-                      const Text(
-                        'Порог закрытия век (EAR)',
-                        style: TextStyle(
-                          color: CockpitColors.textPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF19AA1E).withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          _earThreshold.toStringAsFixed(2),
-                          style: const TextStyle(
-                            color: Color(0xFF00E676),
-                            fontWeight: FontWeight.w900,
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF19AA1E).withValues(alpha: 0.16),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.face_retouching_natural_rounded,
+                      color: Color(0xFF00E676),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '100% Автоматты ИИ режимі',
+                          style: TextStyle(
+                            color: CockpitColors.textPrimary,
                             fontSize: 14,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Настройте, если носите очки или у вас узкий разрез глаз:',
-                    style: TextStyle(color: CockpitColors.textMuted, fontSize: 12),
-                  ),
-                  Slider(
-                    value: _earThreshold.clamp(0.10, 0.20),
-                    min: 0.10,
-                    max: 0.20,
-                    divisions: 10,
-                    activeColor: const Color(0xFF19AA1E),
-                    inactiveColor: const Color(0xFF2C3238),
-                    onChanged: (double val) {
-                      setState(() {
-                        _earThreshold = val;
-                        appState.setPersonalEarOffset(val - 0.130);
-                      });
-                    },
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const <Widget>[
-                      Text('0.10 (Азиялық / Қысық)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
-                      Text('0.13 (Орташа)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
-                      Text('0.18 (Үлкен көз)', style: TextStyle(color: CockpitColors.textMuted, fontSize: 11)),
-                    ],
+                        SizedBox(height: 2),
+                        Text(
+                          'ИИ көз формасына (азиялық, көзілдірік, т.б.) нақты уақытта өзі бейімделеді. Қолмен реттеу қажет емес.',
+                          style: TextStyle(
+                            color: CockpitColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
