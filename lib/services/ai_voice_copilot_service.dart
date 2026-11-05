@@ -34,24 +34,40 @@ class AiVoiceCopilotService extends ChangeNotifier {
 
   bool _isListening = false;
   bool _isSpeaking = false;
+  bool _isDialogueActive = false;
+  DateTime? _dialogueActiveUntil;
+
   String _lastUserSpeech = '';
   String _lastAiResponse = '';
   String _interimSpeech = '';
+  String _activeStatusText = '«Антислип» деңіз';
+
   Timer? _pollingTimer;
+  Timer? _dialogueTimeoutTimer;
   DateTime? _lastAutoPromptTime;
 
   final List<AiVoiceMessage> _messages = <AiVoiceMessage>[];
 
   bool get isListening => _isListening;
   bool get isSpeaking => _isSpeaking;
+  bool get isDialogueActive => _isDialogueActive;
   String get lastUserSpeech => _lastUserSpeech;
   String get lastAiResponse => _lastAiResponse;
   String get interimSpeech => _interimSpeech;
+  String get activeStatusText => _activeStatusText;
   List<AiVoiceMessage> get messages => List.unmodifiable(_messages);
+
+  /// Ensure hands-free background wake listener is automatically running
+  void ensureAutoListening() {
+    if (!_isListening) {
+      startListening();
+    }
+  }
 
   void startListening() {
     _isListening = true;
     _interimSpeech = '';
+    _activeStatusText = '«Антислип» деңіз';
     final String lang = appState.lang;
     WebFaceBridge.startListening(lang);
 
@@ -64,9 +80,12 @@ class AiVoiceCopilotService extends ChangeNotifier {
 
   void stopListening() {
     _isListening = false;
+    _isDialogueActive = false;
     _interimSpeech = '';
     _pollingTimer?.cancel();
     _pollingTimer = null;
+    _dialogueTimeoutTimer?.cancel();
+    _dialogueTimeoutTimer = null;
     WebFaceBridge.stopListening();
     notifyListeners();
   }
@@ -80,11 +99,19 @@ class AiVoiceCopilotService extends ChangeNotifier {
   }
 
   void _pollSpeechRecognition() {
-    // 1. Check live interim speech (words being spoken in real-time)
+    // 1. Check live interim speech
     final String? liveInterim = WebFaceBridge.pollInterimSpeechInput();
     if (liveInterim != null && liveInterim.trim().isNotEmpty) {
-      if (_interimSpeech != liveInterim.trim()) {
-        _interimSpeech = liveInterim.trim();
+      final String trimmed = liveInterim.trim();
+      final String lower = trimmed.toLowerCase();
+
+      // Check if hotword is being said in real-time
+      if (!_isDialogueActive && _matchesWakeWord(lower)) {
+        _activateDialogueSession();
+      }
+
+      if (_interimSpeech != trimmed) {
+        _interimSpeech = trimmed;
         notifyListeners();
       }
     } else if (_interimSpeech.isNotEmpty) {
@@ -98,18 +125,92 @@ class AiVoiceCopilotService extends ChangeNotifier {
       _interimSpeech = '';
       handleUserSpeech(finalText.trim());
     }
+
+    // 3. Check dialogue session timeout
+    if (_isDialogueActive && _dialogueActiveUntil != null) {
+      if (DateTime.now().isAfter(_dialogueActiveUntil!)) {
+        _isDialogueActive = false;
+        _activeStatusText = '«Антислип» деңіз';
+        notifyListeners();
+      }
+    }
+  }
+
+  bool _matchesWakeWord(String text) {
+    return text.contains('антислип') ||
+        text.contains('анти слип') ||
+        text.contains('анти-слип') ||
+        text.contains('антислиип') ||
+        text.contains('antisleep') ||
+        text.contains('anti sleep') ||
+        text.contains('anti-sleep');
+  }
+
+  String _stripWakeWord(String text) {
+    String res = text
+        .replaceAll('антислип', '')
+        .replaceAll('анти слип', '')
+        .replaceAll('анти-слип', '')
+        .replaceAll('антислиип', '')
+        .replaceAll('antisleep', '')
+        .replaceAll('anti sleep', '')
+        .replaceAll('anti-sleep', '')
+        .trim();
+    // Also remove leading/trailing punctuation or particles
+    while (res.startsWith(',') ||
+        res.startsWith('.') ||
+        res.startsWith('!') ||
+        res.startsWith('?') ||
+        res.startsWith(' ') ||
+        res.startsWith('-')) {
+      res = res.substring(1).trim();
+    }
+    return res;
+  }
+
+  void _activateDialogueSession() {
+    _isDialogueActive = true;
+    _dialogueActiveUntil = DateTime.now().add(const Duration(seconds: 20));
+    _activeStatusText = '🎙️ Сізді тыңдап тұрмын...';
+    notifyListeners();
   }
 
   void handleUserSpeech(String text) {
     if (text.isEmpty) return;
+
+    final String lower = text.toLowerCase();
+    final bool hasWake = _matchesWakeWord(lower);
+
+    // If assistant was NOT in active dialogue and user didn't say "Антислип", ignore background car noise
+    if (!_isDialogueActive && !hasWake) {
+      return;
+    }
+
+    _activateDialogueSession();
+
+    final String cleanQuestion = _stripWakeWord(lower);
+    final String rawQuestion = _stripWakeWord(text);
+
     _lastUserSpeech = text;
     _messages.add(AiVoiceMessage(text: text, isUser: true));
     notifyListeners();
 
-    _dispatchIntent(text, text.toLowerCase());
+    // If user called "Антислип" alone with no question
+    if (cleanQuestion.isEmpty || cleanQuestion.length < 2) {
+      _respondHuman(
+        kk: 'Тыңдап тұрмын, бауырым! Қандай көмек керек?',
+        ru: 'Слушаю вас! Что подсказать?',
+        en: 'Yes, I am listening! How can I help?',
+      );
+      return;
+    }
+
+    // Process the question directly
+    _dispatchIntent(rawQuestion, cleanQuestion);
   }
 
   void triggerQuickAction(QuickCopilotAction action) {
+    _activateDialogueSession();
     switch (action) {
       case QuickCopilotAction.greet:
         _respondStudio(
@@ -177,12 +278,12 @@ class AiVoiceCopilotService extends ChangeNotifier {
   }
 
   void _dispatchIntent(String rawText, String clean) {
-    // 1. Pavlodar (Specific question asked by user!)
+    // 1. Pavlodar
     if (clean.contains('павлодар') || clean.contains('pavlodar')) {
       _respondHuman(
         kk: 'Павлодарда бүгін ауа райы қалыпты, Ертіс бойында сергітетін самал жел. Егер Павлодар тасжолында келе жатсаңыз, жол жамылғысына абай болыңыз, жылдамдықты асырмай, қауіпсіз қашықтық сақтаңыз. Ақ жол!',
-        ru: 'В Павлодаре сегодня спокойная погода, свежий воздух у Иртыша. Если вы на павлодарской трассе, соблюдайте скоростной режим и дистанцию. Счастливого и безопасного пути!',
-        en: 'Pavlodar has good weather today along the Irtysh river. Maintain a safe speed and following distance on the highway. Have a safe journey!',
+        ru: 'В Павлодаре сегодня спокойная погода, свежий воздух у Иртыша. Если вы на павлодарской трассе, соблюдайте скоростной режим и дистанцию. Счастливого пути!',
+        en: 'Pavlodar has good weather today along the Irtysh river. Maintain a safe speed and following distance on the highway. Drive safely!',
       );
       return;
     }
@@ -207,7 +308,7 @@ class AiVoiceCopilotService extends ChangeNotifier {
       return;
     }
 
-    // 4. Shymkent / Karaganda / Aktau / Atyrau
+    // 4. Shymkent / Karaganda
     if (clean.contains('шымкент') || clean.contains('shymkent')) {
       _respondHuman(
         kk: 'Шымкентте күн ашық, жолдар жылы әрі кең. Жылдамдықты шамадан асырмай, жол ережесін сақтаңыз!',
@@ -425,15 +526,15 @@ class AiVoiceCopilotService extends ChangeNotifier {
       return;
     }
 
-    // 19. Open-ended Conversational Human Response (For ANY other statement/question)
+    // 19. Open-ended Conversational Human Response
     _respondHuman(
-      kk: 'Сізді түсіндім: «$rawText». Жолда сергек әрі көңілді келе жатқаныңызға қуаныштымын. Қандай тақырыпта әңгімелескіңіз келеді? Мысалы, қалалар ойынын ойнайық па немесе бір әзіл айтайын ба?',
-      ru: 'Вас понял: «$rawText». Рад, что вы бодры за рулем! О чем побеседуем? Можем сыграть в города, решить пример или рассказать анекдот?',
-      en: 'Understood: "$rawText". Glad to keep you company on the road! Shall we play the cities game or hear a quick joke?',
+      kk: 'Сізді түсіндім: «$rawText». Жолда сергек әрі абайлап жүріңіз! Тағы не сұрағыңыз келеді?',
+      ru: 'Вас понял: «$rawText». Будьте аккуратны и бодры за рулем! О чем еще побеседуем?',
+      en: 'Understood: "$rawText". Stay focused and energized on the road! What else would you like to know?',
     );
   }
 
-  /// Studio neural response (uses pre-recorded Azure clips)
+  /// Studio neural response (Azure Neural clips)
   void _respondStudio({
     required String kk,
     required String ru,
@@ -450,17 +551,19 @@ class AiVoiceCopilotService extends ChangeNotifier {
     _lastAiResponse = messageText;
     _messages.add(AiVoiceMessage(text: messageText, isUser: false));
     _isSpeaking = true;
+    _activeStatusText = '🔊 Жауап беруде...';
     notifyListeners();
 
     playAudio();
 
     Future<void>.delayed(const Duration(seconds: 4), () {
       _isSpeaking = false;
+      _activeStatusText = '🎙️ Сізді тыңдап тұрмын...';
       notifyListeners();
     });
   }
 
-  /// Dynamic human-like conversational response (synthesizes voice with WebFaceBridge.speakText)
+  /// Dynamic human-like conversational response (Speech synthesis via WebFaceBridge.speakText)
   void _respondHuman({
     required String kk,
     required String ru,
@@ -476,17 +579,18 @@ class AiVoiceCopilotService extends ChangeNotifier {
     _lastAiResponse = messageText;
     _messages.add(AiVoiceMessage(text: messageText, isUser: false));
     _isSpeaking = true;
+    _activeStatusText = '🔊 Жауап беруде...';
     notifyListeners();
 
     // Voice output via Browser Speech Synthesis
     WebFaceBridge.speakText(messageText, currentLang);
 
-    // Approximate speaking duration: ~65 words per minute
     final int words = messageText.split(' ').length;
     final int durationMs = (words * 320).clamp(2500, 10000);
 
     Future<void>.delayed(Duration(milliseconds: durationMs), () {
       _isSpeaking = false;
+      _activeStatusText = '🎙️ Сізді тыңдап тұрмын...';
       notifyListeners();
     });
   }
@@ -500,6 +604,7 @@ class AiVoiceCopilotService extends ChangeNotifier {
       return;
     }
     _lastAutoPromptTime = now;
+    _activateDialogueSession();
 
     _respondStudio(
       kk: 'Шаршаған сияқтысыз. Жолда сергек болу үшін сөйлесейік!',
