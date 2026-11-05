@@ -22,7 +22,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
   @override
   void initState() {
     super.initState();
-    _autoSaveTrip();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _autoSaveTrip();
+      }
+    });
   }
 
   Future<void> _autoSaveTrip() async {

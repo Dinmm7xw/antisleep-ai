@@ -18,7 +18,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   // Settings local state mirrors appState
-  double _earThreshold = 0.25;
+  double _earThreshold = 0.155;
   double _alarmTimeoutSec = 1.5;
   int _alarmSoundIndex = 0; // 0 = Сирена 880Гц, 1 = Голос ИИ, 2 = Мягкий гонг
   bool _sosAlertEnabled = true;
@@ -190,15 +190,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   Slider(
                     value: _earThreshold,
-                    min: 0.18,
-                    max: 0.32,
-                    divisions: 14,
+                    min: 0.12,
+                    max: 0.22,
+                    divisions: 10,
                     activeColor: const Color(0xFF19AA1E),
                     inactiveColor: const Color(0xFF2C3238),
                     onChanged: (double val) {
                       setState(() {
                         _earThreshold = val;
-                        appState.setPersonalEarOffset(val - 0.25);
+                        appState.setPersonalEarOffset(val - 0.155);
                       });
                     },
                   ),
