@@ -7,9 +7,11 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="AntiSleep AI — Driver Safety & Drowsiness Detection">
 
-  <!-- iOS meta tags & icons -->
+  <!-- iOS Standalone App (PWA) meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AntiSleep AI">
   <meta name="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
@@ -35,6 +37,20 @@
     window._antiSleepWebSirenTimer = null;
     window._antiSleepWakeLock = null;
     window._antiSleepBgEnabled = true;
+    // Automatic Screen WakeLock: prevents iPhone / Android screen from dimming while driving
+    async function initScreenWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          window._antiSleepWakeLock = await navigator.wakeLock.request('screen');
+          console.log("[AntiSleep] Screen WakeLock acquired - screen will not sleep!");
+        }
+      } catch (e) {}
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') initScreenWakeLock();
+    });
+    initScreenWakeLock();
+
 
     (function initWebFaceMeshAndBackgroundBridge() {
       // Capture any video element in the page via prototype hook
@@ -42,6 +58,12 @@
       try {
         const _origPlay = HTMLVideoElement.prototype.play;
         HTMLVideoElement.prototype.play = function() {
+          try {
+            this.setAttribute('playsinline', '');
+            this.setAttribute('webkit-playsinline', '');
+            this.playsInline = true;
+            this.muted = true;
+          } catch (e) {}
           capturedVideo = this;
           console.log("[AntiSleep] Hooked playing HTMLVideoElement:", this);
           return _origPlay.apply(this, arguments);
@@ -147,6 +169,8 @@
             vid.autoplay = true;
             vid.muted = true;
             vid.playsInline = true;
+            vid.setAttribute('playsinline', '');
+            vid.setAttribute('webkit-playsinline', '');
             vid.style.position = 'fixed';
             vid.style.top = '-9999px';
             vid.style.left = '-9999px';
@@ -214,7 +238,7 @@
 
         // Background autonomous alarm
         if (document.hidden && window._antiSleepBgEnabled) {
-          if (ear < 0.15) {
+          if (ear < 0.13) {
             if (!bgClosedSince) bgClosedSince = Date.now();
             if (Date.now() - bgClosedSince >= 1500) {
               window._antiSleepStartWebSiren();

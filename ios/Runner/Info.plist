@@ -22,6 +22,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+		<key>NSMicrophoneUsageDescription</key>
+	<string>AntiSleep AI uses the microphone for hands-free voice commands, wake word activation ('Антислип'), and interactive verbal co-pilot games to keep the driver awake.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>AntiSleep AI connects to vehicle audio systems via Bluetooth to automatically route hands-free voice alerts and driver safety warnings through car speakers.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>AntiSleep AI connects to vehicle audio systems via Bluetooth to automatically route hands-free voice alerts.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>AntiSleep AI uses the front-facing camera to monitor eye openness and detect driver drowsiness in real time.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
