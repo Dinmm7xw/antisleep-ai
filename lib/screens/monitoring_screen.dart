@@ -255,14 +255,17 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         _webFaceData = data;
         if (data != null && data.faceFound) {
           _lastFaceDetectedAt = DateTime.now();
+          final double thresh = appState.effectiveEarThreshold;
+          final double closedCutoff = thresh - 0.040; // ~0.115
+          final double openCutoff = thresh + 0.030;   // ~0.185
+          final double dynamicProb = ((data.ear - closedCutoff) / (openCutoff - closedCutoff)).clamp(0.05, 0.98);
+
           _evaluateRealBiometrics(
             FaceBiometrics(
               ear: data.ear,
               mar: data.mar,
-              leftEyeOpenProb:
-                  data.ear >= appState.effectiveEarThreshold ? 0.95 : 0.05,
-              rightEyeOpenProb:
-                  data.ear >= appState.effectiveEarThreshold ? 0.95 : 0.05,
+              leftEyeOpenProb: dynamicProb,
+              rightEyeOpenProb: dynamicProb,
               headPitchX: data.pitch,
               headYawY: data.yaw,
               headRollZ: 0.0,

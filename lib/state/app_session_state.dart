@@ -105,20 +105,23 @@ class AppSessionState extends ChangeNotifier {
       _totalFramesAnalyzed > 0 ? (_earSum / _totalFramesAnalyzed) : 0.31;
 
   /// Effective EAR threshold taking into account sensitivity mode and personal calibration
+  /// Effective EAR threshold taking into account sensitivity mode and personal calibration.
+  /// Calibrated specifically for Asian / Central Asian almond eye shapes:
+  /// Natural open eye EAR: 0.17 - 0.24, True closed eye EAR: 0.08 - 0.13.
   double get effectiveEarThreshold {
     double base;
     switch (sensitivityMode) {
       case SensitivityMode.city:
-        base = 0.20;
+        base = 0.145; // City / Gentle Mode (triggers only on true deep eye closure < 0.145)
         break;
       case SensitivityMode.highway:
-        base = 0.22;
+        base = 0.155; // Highway Standard Mode (safely below 0.19, triggers on real closure < 0.155)
         break;
       case SensitivityMode.strict:
-        base = 0.24;
+        base = 0.170; // Strict Alert Mode (< 0.170)
         break;
     }
-    return (base + personalEarOffset).clamp(0.16, 0.30);
+    return (base + personalEarOffset).clamp(0.12, 0.24);
   }
 
   /// PERCLOS: Percentage of time eyes were closed over the trip

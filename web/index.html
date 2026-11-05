@@ -214,7 +214,7 @@
 
         // Background autonomous alarm
         if (document.hidden && window._antiSleepBgEnabled) {
-          if (ear < 0.22) {
+          if (ear < 0.15) {
             if (!bgClosedSince) bgClosedSince = Date.now();
             if (Date.now() - bgClosedSince >= 1500) {
               window._antiSleepStartWebSiren();
