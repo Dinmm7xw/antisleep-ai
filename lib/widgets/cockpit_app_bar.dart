@@ -44,15 +44,31 @@ class CockpitAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              titleOverride ?? appState.t('appTitle'),
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: CockpitColors.textWhite,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  titleOverride ?? appState.t('appTitle'),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: CockpitColors.textWhite,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                if (appState.currentDriver != null)
+                  Text(
+                    '${appState.currentDriver!.name} • ${appState.currentDriver!.carPlate}',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: CockpitColors.safeGreen,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

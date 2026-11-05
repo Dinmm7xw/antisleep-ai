@@ -86,6 +86,9 @@ class WebFaceBridge {
   static void playKazakhVoice(String key) {}
   static void stopKazakhVoice() {}
   static void releaseCamera() {}
+  static void saveDriverProfile(String json) {}
+  static String loadDriverProfile() => '';
+  static void clearDriverProfile() {}
   static void startListening(String lang) {}
   static void stopListening() {}
   static bool isListening() => false;

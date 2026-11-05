@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/theme/cockpit_colors.dart';
+import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/supabase_service.dart';
 import 'state/app_session_state.dart';
 
 Future<void> main() async {
@@ -26,6 +28,11 @@ Future<void> main() async {
     debugPrint('Camera initialization warning: $e');
   }
 
+  // Initialize Supabase Cloud PostgreSQL & Local Stores
+  await SupabaseService.initialize();
+  await appState.loadDriverProfileFromDisk();
+  await appState.loadSavedTripsFromDisk();
+
   runApp(const AntiSleepAIApp());
 }
 
@@ -41,7 +48,9 @@ class AntiSleepAIApp extends StatelessWidget {
           title: 'AntiSleep AI',
           debugShowCheckedModeBanner: false,
           theme: CockpitColors.darkTheme,
-          home: const HomeScreen(),
+          home: appState.isAuthenticated
+              ? const HomeScreen()
+              : const AuthScreen(),
         );
       },
     );

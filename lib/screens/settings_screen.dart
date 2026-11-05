@@ -29,6 +29,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _earThreshold = appState.effectiveEarThreshold;
+    if (appState.currentDriver != null &&
+        appState.currentDriver!.sosPhone.isNotEmpty) {
+      _sosPhoneController.text = appState.currentDriver!.sosPhone;
+    }
+    _sosPhoneController.addListener(() {
+      appState.updateSosPhone(_sosPhoneController.text);
+    });
   }
 
   @override
@@ -78,6 +85,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           children: <Widget>[
+            // 0. Driver Profile Card & Session
+            _buildDriverProfileSection(),
+            const SizedBox(height: 16),
+
             // 1. Language Quick Switcher
             _buildSectionHeader('ЯЗЫК ИНТЕРФЕЙСА / ТІЛ ТАҢДАУ', Icons.language_rounded),
             _buildCard(
@@ -488,6 +499,180 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDriverProfileSection() {
+    final driver = appState.currentDriver;
+    final String driverName = driver?.name ?? 'Димаш';
+    final String carPlate = driver?.carPlate ?? '777 AAA 02';
+    final String emailOrPhone = driver?.emailOrPhone ?? 'driver@antisleep.kz';
+    final bool isGuest = driver?.isGuest ?? false;
+
+    return _buildCard(
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isGuest
+                      ? const Color(0xFF00E5FF).withValues(alpha: 0.15)
+                      : CockpitColors.safeGreen.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isGuest
+                        ? const Color(0xFF00E5FF).withValues(alpha: 0.6)
+                        : CockpitColors.safeGreen.withValues(alpha: 0.6),
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  isGuest ? Icons.bolt_rounded : Icons.person_rounded,
+                  color: isGuest ? const Color(0xFF00E5FF) : CockpitColors.safeGreen,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Flexible(
+                          child: Text(
+                            driverName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isGuest) ...<Widget>[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'DEMO',
+                              style: TextStyle(
+                                color: Color(0xFF00E5FF),
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      emailOrPhone,
+                      style: const TextStyle(
+                        color: CockpitColors.textMuted,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Kazakh Car Plate Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF13171B),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: CockpitColors.cardBorder),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Text(
+                            '🇰🇿 ',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          Text(
+                            carPlate,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11.5,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Logout button
+              IconButton(
+                tooltip: appState.t('logout'),
+                icon: const Icon(
+                  Icons.logout_rounded,
+                  color: Color(0xFFFF5252),
+                  size: 22,
+                ),
+                onPressed: _showLogoutConfirmDialog,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLogoutConfirmDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          backgroundColor: CockpitColors.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: CockpitColors.cardBorder),
+          ),
+          title: Text(
+            appState.t('logout'),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
+          content: Text(
+            appState.t('confirmLogout'),
+            style: const TextStyle(color: CockpitColors.textMuted, fontSize: 13),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                appState.t('no'),
+                style: const TextStyle(color: CockpitColors.textMuted),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF5252),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await appState.logout();
+              },
+              child: Text(
+                appState.t('yes'),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

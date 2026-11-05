@@ -115,6 +115,12 @@ external void _jsStartListening(JSString lang);
 external void _jsStopListening();
 
 
+@JS('_antiSleepSaveDriver')
+external void _jsSaveDriver(JSString json);
+
+@JS('_antiSleepLoadDriver')
+external JSString? _jsLoadDriver();
+
 class WebFaceBridge {
   static final Set<String> _registeredViews = <String>{};
 
@@ -370,6 +376,27 @@ class WebFaceBridge {
   static void releaseCamera() {
     try {
       _jsReleaseCamera();
+    } catch (_) {}
+  }
+
+  static void saveDriverProfile(String json) {
+    try {
+      _jsSaveDriver(json.toJS);
+    } catch (_) {}
+  }
+
+  static String loadDriverProfile() {
+    try {
+      final JSString? val = _jsLoadDriver();
+      return val?.toDart ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static void clearDriverProfile() {
+    try {
+      _jsSaveDriver(''.toJS);
     } catch (_) {}
   }
 
