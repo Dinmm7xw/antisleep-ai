@@ -15,6 +15,9 @@ import '../widgets/cockpit_app_bar.dart';
 import '../widgets/cockpit_bottom_nav_bar.dart';
 import '../widgets/live_navigation_map_view.dart';
 import '../widgets/painters/face_mesh_overlay_painter.dart';
+import '../services/ai_voice_copilot_service.dart';
+import '../widgets/ai_copilot_orb_widget.dart';
+
 import 'danger_alert_screen.dart';
 import 'home_screen.dart';
 import 'summary_screen.dart';
@@ -393,6 +396,9 @@ class _MonitoringScreenState extends State<MonitoringScreen>
         HapticFeedback.heavyImpact();
         _showTemporaryBanner(appState.t('yawnToast'));
         KazakhVoiceAudio.playYawnAlert();
+        if (appState.totalYawns >= 2) {
+          aiCopilotService.checkFatigueAutoPrompt(60, appState.totalYawns);
+        }
       }
     } else {
       _mouthOpenSince = null;
@@ -910,6 +916,13 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                               ),
                             ),
                           ),
+
+                        // Floating Futuristic AI Voice Co-Pilot Hologram Orb (Alice / Siri / AntiSleep)
+                        const Positioned(
+                          bottom: 56,
+                          right: 14,
+                          child: AiCopilotOrbWidget(),
+                        ),
                       ],
                     ),
                   ),

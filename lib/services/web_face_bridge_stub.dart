@@ -89,4 +89,9 @@ class WebFaceBridge {
   static void saveDriverProfile(String json) {}
   static String loadDriverProfile() => '';
   static void clearDriverProfile() {}
+  static void startListening(String lang) {}
+  static void stopListening() {}
+  static bool isListening() => false;
+  static String? pollLatestSpeechInput() => null;
+  static String? pollInterimSpeechInput() => null;
 }

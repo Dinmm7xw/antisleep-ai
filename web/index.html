@@ -584,6 +584,130 @@
       } catch (e) {}
     };
 
+        // Real-Time Hands-Free Speech Recognition & Speech Synthesis Bridge
+    window._antiSleepRecognition = null;
+    window._antiSleepIsListening = false;
+    window._antiSleepLatestSpeechInput = "";
+    window._antiSleepInterimSpeechInput = "";
+    window._antiSleepTargetLang = "kk-KZ";
+
+    window._antiSleepStartListening = function(lang) {
+      try {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          console.warn("[AntiSleep Co-Pilot] SpeechRecognition not supported in this browser");
+          return false;
+        }
+        if (window._antiSleepRecognition) {
+          try { window._antiSleepRecognition.abort(); } catch (e) {}
+        }
+        const localeMap = { 'kk': 'kk-KZ', 'ru': 'ru-RU', 'en': 'en-US' };
+        window._antiSleepTargetLang = localeMap[lang] || 'kk-KZ';
+
+        const rec = new SpeechRecognition();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.maxAlternatives = 1;
+        rec.lang = window._antiSleepTargetLang;
+
+        rec.onstart = function() {
+          window._antiSleepIsListening = true;
+          console.log("[AntiSleep Co-Pilot] Continuous listening active in", rec.lang);
+        };
+
+        rec.onresult = function(event) {
+          let interim = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              const clean = transcript.trim();
+              if (clean.length > 0) {
+                console.log("[AntiSleep Co-Pilot] Final speech:", clean);
+                window._antiSleepLatestSpeechInput = clean;
+                window._antiSleepInterimSpeechInput = "";
+              }
+            } else {
+              interim += transcript;
+            }
+          }
+          if (interim.trim().length > 0) {
+            window._antiSleepInterimSpeechInput = interim.trim();
+          }
+        };
+
+        rec.onerror = function(event) {
+          console.warn("[AntiSleep Co-Pilot] Speech recognition event:", event.error);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            window._antiSleepIsListening = false;
+          }
+        };
+
+        rec.onend = function() {
+          console.log("[AntiSleep Co-Pilot] Listening iteration finished");
+          // If listening is still enabled by user, immediately restart so mic never drops
+          if (window._antiSleepIsListening) {
+            setTimeout(function() {
+              if (window._antiSleepIsListening) {
+                try { rec.start(); } catch (e) {}
+              }
+            }, 200);
+          }
+        };
+
+        rec.start();
+        window._antiSleepRecognition = rec;
+        window._antiSleepIsListening = true;
+        return true;
+      } catch (e) {
+        console.warn("[AntiSleep Co-Pilot] startListening exception:", e);
+        return false;
+      }
+    };
+
+    window._antiSleepStopListening = function() {
+      try {
+        window._antiSleepIsListening = false;
+        if (window._antiSleepRecognition) {
+          window._antiSleepRecognition.stop();
+          window._antiSleepRecognition = null;
+        }
+        window._antiSleepInterimSpeechInput = "";
+      } catch (e) {}
+    };
+
+    // Speech Synthesis for Dynamic Human-like AI Answers
+    window._antiSleepSpeakText = function(text, lang) {
+      try {
+        if (!window.speechSynthesis || !text) return;
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*#_~`«»]/g, '').trim();
+        if (!clean) return;
+        const utter = new SpeechSynthesisUtterance(clean);
+        const localeMap = { 'kk': 'kk-KZ', 'ru': 'ru-RU', 'en': 'en-US' };
+        const targetLocale = localeMap[lang] || 'kk-KZ';
+        utter.lang = targetLocale;
+
+        const voices = window.speechSynthesis.getVoices();
+        const matchingVoice = voices.find(v => v.lang === targetLocale) ||
+                              voices.find(v => v.lang.startsWith(targetLocale.split('-')[0])) ||
+                              voices.find(v => v.lang.includes('ru') || v.lang.includes('RU'));
+        if (matchingVoice) {
+          utter.voice = matchingVoice;
+        }
+        utter.rate = 1.05;
+        utter.pitch = 1.0;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {
+        console.warn("[AntiSleep Co-Pilot] speakText error:", e);
+      }
+    };
+
+    window._antiSleepStopSpeech = function() {
+      try {
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+      } catch (e) {}
+    };
+
     // Multilingual Studio Neural Voice Player (KK: Daulet, RU: Svetlana, EN: Emma)
     window._antiSleepCurrentAudio = null;
     window._antiSleepPlayKazakhVoice = function(key) {
