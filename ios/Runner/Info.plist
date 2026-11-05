@@ -24,6 +24,16 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>AntiSleep AI uses the front-facing camera to monitor eye openness and detect driver drowsiness in real time.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>AntiSleep AI uses your GPS location to display live road navigation, vehicle speed, and route guidance alongside drowsiness monitoring.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>AntiSleep AI keeps tracking your route and monitoring driver safety in background and Picture-in-Picture modes.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+		<string>processing</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
